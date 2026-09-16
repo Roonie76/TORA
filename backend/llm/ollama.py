@@ -4,6 +4,7 @@ import logging
 import httpx
 from typing import Optional, List, Dict, Any
 
+from ..observability import record_llm_usage
 from .base import (
     LLMProvider,
     LLMResponse,
@@ -215,6 +216,7 @@ class OllamaProvider(LLMProvider):
             "options": opts,
         }
 
+        started = time.monotonic()
         try:
             if self._client:
                 response = await self._client.post(
@@ -253,6 +255,7 @@ class OllamaProvider(LLMProvider):
                     detail="done_reason=length",
                 )
 
+            record_llm_usage((time.monotonic() - started) * 1000, data, target_model)
             return LLMResponse(
                 content=content,
                 model=target_model,

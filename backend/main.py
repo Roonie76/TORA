@@ -26,6 +26,7 @@ from .tools import ToolRegistry, CalculatorTool, WebSearchTool, WebFetchTool, Re
 from .planner import Planner
 from .agent import ToraAgent
 from .state import SessionStore, is_valid_conversation_id
+from .observability import TelemetryHub, conversation_ref, start_trace
 
 load_dotenv()
 
@@ -84,6 +85,8 @@ class SlidingWindowRateLimiter:
 
 
 rate_limiter = SlidingWindowRateLimiter(RATE_LIMIT_PER_MINUTE)
+telemetry = TelemetryHub(trace_file=os.getenv("TORA_TRACE_FILE") or None)
+DEBUG_ENDPOINTS = os.getenv("TORA_DEBUG_ENDPOINTS", "").strip().lower() in ("1", "true", "yes")
 
 DEFAULT_SESSION_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".data", "tora_sessions.db")
 session_store = SessionStore(
@@ -171,6 +174,28 @@ async def list_models():
 @app.post("/api/chat", response_model=ChatResponse)
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, http_request: Request):
+    """Traced entry point (metadata-only traces; see backend/observability)."""
+    trace = start_trace(
+        mode="stateless" if (request.messages is not None and request.conversation_id is None) else "stateful",
+        conversation_ref=conversation_ref(request.conversation_id),
+    )
+    try:
+        result = await _chat(request, http_request)
+    except HTTPException as exc:
+        status_label = "rate_limited" if exc.status_code == 429 else ("client_error" if exc.status_code < 500 else "error")
+        telemetry.finish(trace, status=status_label, http_status=exc.status_code,
+                         error_type=None if exc.status_code < 500 else f"http_{exc.status_code}")
+        raise
+    except Exception as exc:
+        telemetry.finish(trace, status="error", http_status=500, error_type=type(exc).__name__)
+        raise
+    if result.conversation_id and trace.conversation_ref is None:
+        trace.conversation_ref = conversation_ref(result.conversation_id)
+    telemetry.finish(trace, status="ok", http_status=200)
+    return result
+
+
+async def _chat(request: ChatRequest, http_request: Request):
     """
     Core Chat Endpoint:
     Validates request -> Builds Context -> ToraAgent -> LLMProvider -> Response
@@ -370,6 +395,20 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str) -> ChatResponse:
         intent=intent_value,
         grounding=grounding,
     )
+
+
+@app.get("/api/metrics")
+async def metrics():
+    """Aggregate, content-free TORA metrics since process start."""
+    return telemetry.snapshot()
+
+
+@app.get("/api/traces")
+async def traces(limit: int = 50):
+    """Recent per-turn traces (metadata only). Enabled with TORA_DEBUG_ENDPOINTS=1."""
+    if not DEBUG_ENDPOINTS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
+    return {"traces": telemetry.recent(limit)}
 
 
 @app.get("/api/conversations/{conversation_id}")

@@ -16,6 +16,7 @@ from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
 from ..context.extractor import extract_memory_commands
+from ..observability import TraceTimer, current_trace
 from ..verify import build_evidence, caveat_note, correction_instruction, verify_answer
 from ..context import (
     ConversationContext,
@@ -196,6 +197,11 @@ class ToraAgent:
         )
         if conversation_state is not None:
             conversation_state.observe(message, intent)
+        trace = current_trace()
+        if trace is not None:
+            trace.intent = intent.intent.value
+            trace.is_followup = intent.is_followup
+            trace.turn = turn
         logger.info(
             "Intent=%s followup=%s entities=%s topic=%s",
             intent.intent.value, intent.is_followup, intent.entities,
@@ -231,12 +237,21 @@ class ToraAgent:
                 known_facts = "\n".join(
                     f"- {f.name}: {f.value} ({f.period or 'n/a'})" for f in active_profile.iter_current_facts()
                 )
+            planner_timer = TraceTimer()
             executed_plan = await self._planner.plan(
                 message=planner_message,
                 context=context,
                 model=model,
                 known_facts=known_facts,
             )
+            if trace is not None:
+                trace.planner = {
+                    "used": True,
+                    "ms": planner_timer.ms,
+                    "requires_tools": executed_plan.requires_tools,
+                    "steps": [st.tool_name for st in executed_plan.steps],
+                    "rewritten_query": planner_message != message,
+                }
             logger.info(
                 "Planner decision: requires_tools=%s, steps_count=%d",
                 executed_plan.requires_tools,
@@ -263,6 +278,13 @@ class ToraAgent:
                         tool_result=tool_result,
                         existing_context=effective_tool_context,
                     )
+                    if trace is not None:
+                        trace.tools.append({
+                            "name": tool_result.tool_name,
+                            "ok": tool_result.success,
+                            "ms": tool_result.metadata.get("duration_ms"),
+                            "error": None if tool_result.success else (tool_result.error or "")[:120],
+                        })
 
         if conversation_state is not None:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
@@ -286,6 +308,8 @@ class ToraAgent:
 
         # Observability logging (metadata only, no private values)
         input_token_est = estimate_messages_tokens(messages)
+        if trace is not None:
+            trace.prompt_tokens_estimate = input_token_est
         logger.info(
             "Context constructed: estimated_input_tokens=%d, message_count=%d, has_financial_profile=%s, has_tools=%s",
             input_token_est,
@@ -358,6 +382,8 @@ class ToraAgent:
                     estimate_messages_tokens(reduced_messages),
                 )
                 # Retry generation ONCE
+                if trace is not None:
+                    trace.overflow_retry = True
                 final_messages = reduced_messages
                 llm_response = await self.llm_provider.generate(
                     messages=reduced_messages,
@@ -388,6 +414,13 @@ class ToraAgent:
                 options=options,
                 mode=mode,
             )
+
+        if trace is not None and grounding is not None:
+            trace.grounding = {
+                "checked": grounding.get("checked"),
+                "unsupported": len(grounding.get("unsupported", [])),
+                "action": grounding.get("action"),
+            }
 
         return AgentResponse(
             content=content,
