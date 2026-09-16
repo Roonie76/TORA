@@ -433,33 +433,34 @@ class FactExtractor:
                         detected_entities.append("commute")
 
             # 6. Personal Loan / EMI
-            emi_match = re.search(
+            emi_matches = list(re.finditer(
                 r"(?:\b(?:personal\s*loan|loan\s*emi|monthly\s*emi|emi)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:monthly\s*emi|personal\s*loan|emi))",
                 c_lower,
-            )
-            if emi_match:
+            ))
+            seen_loan_names = set()
+            for emi_match in emi_matches:
                 val_str = emi_match.group(1) or emi_match.group(2)
                 amt = parse_inr_amount(val_str)
                 is_emi = bool(re.search(r"\bemis?\b|per\s*month|a\s*month|monthly", emi_match.group(0)))
                 if is_emi and amt and 1000 <= amt <= 1000000:
-                    candidates.append({
-                        "name": "personal_loan_emi",
-                        "value": amt,
-                        "category": "loan",
-                        "period": "monthly",
-                        "status": clause_status,
-                    })
+                    name, period = "personal_loan_emi", "monthly"
                 elif not is_emi and amt and amt >= 10000:
                     # "a personal loan of 3 lakh" is an outstanding balance, not a monthly EMI
-                    candidates.append({
-                        "name": "personal_loan_balance",
-                        "value": amt,
-                        "category": "loan",
-                        "period": "lump_sum",
-                        "status": clause_status,
-                    })
-                    if "loan" not in detected_entities:
-                        detected_entities.append("loan")
+                    name, period = "personal_loan_balance", "lump_sum"
+                else:
+                    continue
+                if name in seen_loan_names:
+                    continue
+                seen_loan_names.add(name)
+                candidates.append({
+                    "name": name,
+                    "value": amt,
+                    "category": "loan",
+                    "period": period,
+                    "status": clause_status,
+                })
+                if "loan" not in detected_entities:
+                    detected_entities.append("loan")
 
             # 7. Credit Card Debt / Balance
             cc_match = re.search(

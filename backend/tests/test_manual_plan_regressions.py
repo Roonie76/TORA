@@ -60,3 +60,8 @@ def test_sip_amount_remembered_but_not_its_change():
 def test_intents(message, intent):
     extracted = [c for c in FactExtractor.extract_candidate_facts(message) if not c.get("action")]
     assert IntentClassifier.classify(message, ConversationState(), extracted_facts=extracted).intent == intent
+
+
+def test_loan_balance_and_emi_in_one_message():
+    assert facts("I have a personal loan of 3 lakh and my home loan EMI is 25k") == {
+        "personal_loan_balance": 300000.0, "personal_loan_emi": 25000.0}
