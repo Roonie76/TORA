@@ -146,6 +146,7 @@ class ChatResponse(BaseModel):
     done: bool = True
     conversation_id: Optional[str] = None
     intent: Optional[str] = None
+    grounding: Optional[Dict[str, Any]] = None
 
 
 @app.get("/")
@@ -266,6 +267,7 @@ async def chat(request: ChatRequest, http_request: Request):
             model=agent_response.model,
             done=agent_response.done,
             intent=_intent_value(agent_response),
+            grounding=_grounding_summary(agent_response),
         )
 
     except ValueError as e:
@@ -293,6 +295,17 @@ async def chat(request: ChatRequest, http_request: Request):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"LLM provider error: {str(e)}",
         )
+
+
+def _grounding_summary(agent_response) -> Optional[Dict[str, Any]]:
+    g = getattr(agent_response, "grounding", None)
+    if not g:
+        return None
+    return {
+        "action": g.get("action"),
+        "checked": g.get("checked"),
+        "unsupported": [c["text"] for c in g.get("unsupported", [])],
+    }
 
 
 def _intent_value(agent_response) -> Optional[str]:
@@ -338,6 +351,10 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str) -> ChatResponse:
         )
         intent_value = _intent_value(agent_response)
         meta = {"intent": intent_value} if intent_value else None
+        grounding = _grounding_summary(agent_response)
+        if grounding:
+            meta = dict(meta or {})
+            meta["grounding"] = grounding
         plan = getattr(agent_response, "plan", None)
         if plan is not None and plan.requires_tools:
             meta = dict(meta or {})
@@ -351,6 +368,7 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str) -> ChatResponse:
         done=agent_response.done,
         conversation_id=session.id,
         intent=intent_value,
+        grounding=grounding,
     )
 
 

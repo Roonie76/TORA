@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Optional, List, Dict, Any, Union
 from dataclasses import dataclass
 
@@ -15,6 +16,7 @@ from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
 from ..context.extractor import extract_memory_commands
+from ..verify import build_evidence, caveat_note, correction_instruction, verify_answer
 from ..context import (
     ConversationContext,
     ConversationMessage,
@@ -38,6 +40,13 @@ logger = logging.getLogger("tora.agent")
 MAX_TOOL_STEPS: int = 3
 # Maximum automatic context-reduction retries on length overflow
 MAX_OVERFLOW_RETRIES: int = 1
+GROUNDING_MODES = ("off", "annotate", "regenerate")
+STRICT_PERCENT_INTENTS = (Intent.RESEARCH, Intent.RESEARCH_FOLLOWUP, Intent.COMPARISON)
+
+
+def _grounding_mode() -> str:
+    mode = os.getenv("TORA_GROUNDING_MODE", "regenerate").strip().lower()
+    return mode if mode in GROUNDING_MODES else "regenerate"
 
 
 @dataclass
@@ -50,6 +59,7 @@ class AgentResponse:
     tool_context: Optional[ToolContext] = None
     financial_profile: Optional[FinancialProfile] = None
     intent: Optional[IntentResult] = None
+    grounding: Optional[Dict[str, Any]] = None
 
 
 class ToraAgent:
@@ -285,6 +295,7 @@ class ToraAgent:
         )
 
         # 4. LLM Generation with 1-Shot Context Overflow Recovery
+        final_messages = messages
         try:
             llm_response: LLMResponse = await self.llm_provider.generate(
                 messages=messages,
@@ -347,6 +358,7 @@ class ToraAgent:
                     estimate_messages_tokens(reduced_messages),
                 )
                 # Retry generation ONCE
+                final_messages = reduced_messages
                 llm_response = await self.llm_provider.generate(
                     messages=reduced_messages,
                     model=model,
@@ -358,8 +370,27 @@ class ToraAgent:
 
         logger.info("Agent response generated successfully with model '%s'.", llm_response.model)
 
+        # 5. Numeric grounding verification (Phase 4B)
+        content = llm_response.content
+        grounding: Optional[Dict[str, Any]] = None
+        mode = _grounding_mode()
+        if mode != "off" and content:
+            content, grounding = await self._ground(
+                content=content,
+                message=message,
+                context=context,
+                profile=active_profile,
+                tool_context=effective_tool_context,
+                conversation_state=conversation_state,
+                intent=intent,
+                messages=final_messages,
+                model=model,
+                options=options,
+                mode=mode,
+            )
+
         return AgentResponse(
-            content=llm_response.content,
+            content=content,
             model=llm_response.model,
             done=llm_response.done,
             raw=llm_response.raw,
@@ -367,4 +398,62 @@ class ToraAgent:
             tool_context=effective_tool_context if not effective_tool_context.is_empty() else None,
             financial_profile=active_profile if isinstance(active_profile, FinancialProfile) else None,
             intent=intent,
+            grounding=grounding,
         )
+
+    async def _ground(
+        self,
+        content: str,
+        message: str,
+        context: Optional[ConversationContext],
+        profile: Any,
+        tool_context: ToolContext,
+        conversation_state: Optional[ConversationState],
+        intent: IntentResult,
+        messages: List[Dict[str, str]],
+        model: Optional[str],
+        options: Dict[str, Any],
+        mode: str,
+    ):
+        """Verify figures in the answer; regenerate once and/or annotate when unsupported."""
+        user_texts = [message]
+        other_texts: List[str] = []
+        if context is not None:
+            for m in context.messages:
+                (user_texts if m.role == "user" else other_texts).append(m.content)
+        if conversation_state is not None:
+            other_texts.append(conversation_state.render_trusted())
+            other_texts.append(conversation_state.render_external())
+        evidence = build_evidence(
+            user_texts=user_texts,
+            profile=profile if isinstance(profile, FinancialProfile) else None,
+            tool_context=tool_context,
+            other_texts=other_texts,
+        )
+        strict = intent.intent in STRICT_PERCENT_INTENTS
+        report = verify_answer(content, evidence, strict_percentages=strict)
+        action = "none"
+        if not report.ok and mode == "regenerate":
+            corrected = [dict(m) for m in messages]
+            corrected[0] = {
+                "role": corrected[0]["role"],
+                "content": corrected[0]["content"] + "\n\n## Grounding Correction\n" + correction_instruction(report),
+            }
+            try:
+                retry = await self.llm_provider.generate(
+                    messages=corrected, model=model, options=options if options else None
+                )
+                if retry.content:
+                    second = verify_answer(retry.content, evidence, strict_percentages=strict)
+                    logger.info("Grounding regeneration: before=%d unsupported, after=%d",
+                                len(report.unsupported), len(second.unsupported))
+                    content, report, action = retry.content, second, "regenerated"
+            except Exception as exc:  # keep the first draft, annotate below
+                logger.warning("Grounding regeneration failed: %s", exc)
+        if not report.ok:
+            content = content + caveat_note(report)
+            action = "annotated" if action == "none" else "regenerated+annotated"
+        result = report.to_dict()
+        result["action"] = action
+        result["mode"] = mode
+        return content, result

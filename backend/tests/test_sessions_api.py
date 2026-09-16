@@ -195,3 +195,22 @@ def test_planner_receives_known_facts(client, llm):
     planner_system = llm.planner_calls[-1][0]["content"]
     assert "Known User Facts" in planner_system
     assert "income: 90000.0" in planner_system
+
+
+def test_grounding_summary_returned_and_stored(client, llm, monkeypatch):
+    monkeypatch.setenv("TORA_GROUNDING_MODE", "annotate")
+    original = llm.generate
+
+    async def answer_with_made_up_figure(messages, model=None, options=None):
+        if messages[0]["content"].startswith("You are TORA's Tool Planner"):
+            return await original(messages, model, options)
+        llm.answer_calls.append(messages)
+        return LLMResponse(content="You should keep ₹3,33,333 aside.", model="fake")
+
+    monkeypatch.setattr(llm, "generate", answer_with_made_up_figure)
+    r = chat(client, "How big should my emergency fund be?").json()
+    assert r["grounding"]["action"] == "annotated"
+    assert r["grounding"]["unsupported"] == ["₹3,33,333"]
+    assert "could not be verified" in r["response"]
+    turns = client.get(f"/api/conversations/{r['conversation_id']}").json()["turns"]
+    assert turns[-1]["meta"]["grounding"]["action"] == "annotated"
