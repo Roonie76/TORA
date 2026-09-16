@@ -15,12 +15,16 @@ POST /api/chat
           ├─ planner (LLM, JSON)      chooses tools; sees known user facts
           ├─ tool executor            timeouts, structured errors
           │   ├─ calculator           safe AST arithmetic
-          │   ├─ finance_calc         EMI, amortization, SIP, goals, inflation, debt payoff, ratios
+          │   ├─ finance_calc         EMI, amortization, SIP, goals, retirement, budget, debt payoff, ratios
+          │   ├─ tax_calc             versioned Indian income tax (2025-26, 2026-27), regime comparison
           │   ├─ web_search           DuckDuckGo / Tavily
           │   ├─ web_fetch            SSRF-safe (pinned DNS, byte budget)
           │   └─ research             search → fetch → evidence → source credibility → synthesis
           ├─ context builder          token budget; untrusted web data isolated from the system prompt
-          └─ LLM provider (Ollama)    overflow recovery, model-list cache
+          ├─ LLM provider (Ollama)    overflow recovery, model-list cache
+          └─ grounding verifier       every ₹ figure checked against data/tools; regenerate or caveat
+observability                          metadata-only traces, /api/metrics
+evals                                  scenario benchmark (offline in CI, live against Ollama)
 ```
 
 | Path | Purpose |
@@ -29,7 +33,10 @@ POST /api/chat
 | `backend/agent/` | Orchestration loop |
 | `backend/context/` | Financial profile, fact extraction, summarizer, token budget, context builder |
 | `backend/state/` | Intent classifier, conversation/topic state, SQLite session store |
-| `backend/finance/` | Deterministic financial engine |
+| `backend/finance/` | Deterministic financial engine (`engine.py`) and versioned tax engine (`tax.py`) |
+| `backend/verify/` | Numeric grounding verifier |
+| `backend/observability/` | Per-turn traces and metrics |
+| `backend/evals/` | Evaluation harness and scenarios |
 | `backend/tools/` | Tool registry/executor and tools |
 | `backend/research/` | Multi-source research, verification and synthesis |
 | `backend/prompts/` | TORA and planner prompts |
@@ -52,6 +59,17 @@ python -m uvicorn backend.main:app --port 8000
 python -m pytest -q
 ```
 
+## Evaluate
+
+```bash
+python -m backend.evals --mode offline                      # deterministic pipeline, runs in CI
+python -m backend.evals --mode live --model gemma4:e4b \
+    --out evals_live.json --md evals_live.md                # real model plans and answers
+python -m backend.evals --mode live --real-web              # also hit real search/fetch
+```
+
+Add scenarios to `backend/evals/scenarios.json`; use the live report to compare models and prompt changes.
+
 ## API
 
 | Method | Path | Description |
@@ -61,15 +79,19 @@ python -m pytest -q
 | DELETE | `/api/conversations/{id}` | Delete the conversation and its memory |
 | DELETE | `/api/conversations/{id}/memory` | Forget remembered facts, keep the transcript |
 | GET | `/api/health`, `/api/models` | Provider health and installed models |
+| GET | `/api/metrics` | Requests, success rate, latency percentiles, intents, tool health, tokens, grounding outcomes |
+| GET | `/api/traces?limit=50` | Recent metadata-only traces (requires `TORA_DEBUG_ENDPOINTS=1`) |
+
+Chat responses also include `grounding: {action, checked, unsupported}`.
 
 In the Spendsy frontend, Vite proxies `/api/chat`, `/api/models`, `/api/health` and `/api/conversations`
 to port 8000.
 
 ## Status
 
-See `backend/docs/tora_reaudit_2026_09.md` and `backend/docs/phase_3a_3b_completion.md`.
-Next: evaluation benchmark and model selection, authenticated access to Spendsy account data,
-post-generation numeric grounding checks, a versioned tax engine, planning tools and observability.
+See `backend/docs/` (`tora_reaudit_2026_09.md`, `phase_3a_3b_completion.md`, `phase_4_completion.md`).
+Next: live benchmark runs for model selection, authenticated access to Spendsy account data,
+streaming responses, Hindi/Hinglish understanding and compliance hardening.
 
 ## License
 

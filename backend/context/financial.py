@@ -582,7 +582,7 @@ class FinancialProfile:
             if self.income._valid_revisions():
                 orig = self.income.format_value(self.income.get_original_value())
                 prev = self.income.format_value(self.income.get_previous_value())
-                prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Original: {orig})"
+                prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Previous: {prev})"
             current_facts.append(f"- Monthly Income: {self.income.format_value()}{prov}")
 
         if self.rent and self.rent.status == FactStatus.CURRENT.value:
@@ -590,7 +590,7 @@ class FinancialProfile:
             if self.rent._valid_revisions():
                 orig = self.rent.format_value(self.rent.get_original_value())
                 prev = self.rent.format_value(self.rent.get_previous_value())
-                prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Original: {orig})"
+                prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Previous: {prev})"
             current_facts.append(f"- Monthly Rent: {self.rent.format_value()}{prov}")
 
         for k, v in self.expenses.items():
@@ -607,7 +607,7 @@ class FinancialProfile:
                 if v._valid_revisions():
                     orig = v.format_value(v.get_original_value())
                     prev = v.format_value(v.get_previous_value())
-                    prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Original: {orig})"
+                    prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Previous: {prev})"
                 current_facts.append(f"- Debt/Liability ({k.capitalize()}): {v.format_value()}{prov}")
 
         if self.savings and self.savings.status == FactStatus.CURRENT.value:

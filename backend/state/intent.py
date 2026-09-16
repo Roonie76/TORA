@@ -91,6 +91,9 @@ _PRODUCT_RES = [(name, re.compile(r"(?<![\w])(?:" + pat + r")(?![\w])", re.IGNOR
 _ARITHMETIC = re.compile(r"\d\s*[*/+^×÷x-]\s*\d|\b(?:calculate|compute|how much will|how much would|emi (?:for|on|of)|"
                          r"what is \d+(?:\.\d+)?\s*%|percent of|% of|amortization|amortisation|maturity (?:value|amount)|"
                          r"future value|corpus|payoff|pay off .* in)\b", re.IGNORECASE)
+_CALC_TOPIC_WITH_NUMBER = re.compile(
+    r"(?=.*\d)(?=.*\b(?:emi|sip|corpus|maturity|compound|amortization|prepay\w*|how much tax|tax on|tax payable|"
+    r"regime is better|which regime|net worth|debt[- ]free|retire\w*)\b)", re.IGNORECASE | re.DOTALL)
 _WHAT_IF = re.compile(r"\b(?:what if|suppose|assuming|assume|imagine|hypothetically|let'?s say|if i (?:increase|decrease|"
                       r"invest|take|pay|prepay|earn|save|stop|start|switch)|if my)\b", re.IGNORECASE)
 _COMPARISON = re.compile(r"\b(?:compare|comparison|vs\.?|versus|which is (?:better|cheaper|best)|better than|"
@@ -205,7 +208,7 @@ class IntentClassifier:
 
         if _WHAT_IF.search(text):
             intent = Intent.WHAT_IF
-        elif _ARITHMETIC.search(text):
+        elif _ARITHMETIC.search(text) or _CALC_TOPIC_WITH_NUMBER.match(text):
             intent = Intent.CALCULATION
         elif _MEMORY_RECALL.search(text) and _MEMORY_FACT_WORDS.search(text) and not entities:
             intent = Intent.MEMORY_RECALL
@@ -217,7 +220,7 @@ class IntentClassifier:
             intent = Intent.RESEARCH
         elif _PLANNING.search(text):
             intent = Intent.PLANNING
-        elif extracted_facts:
+        elif extracted_facts and "?" not in text:
             intent = Intent.MEMORY_UPDATE
         elif _FINANCE_WORDS.search(text) or entities or product:
             intent = Intent.FINANCIAL_QA

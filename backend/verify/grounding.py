@@ -29,7 +29,7 @@ _MONEY_RE = re.compile(
     rf"|(?P<num2>{_NUM})\s*(?P<unit2>lakhs|lakh|lacs|lac|crores|crore|cr)\b",
     re.IGNORECASE,
 )
-_PERCENT_RE = re.compile(rf"(?P<num>\d+(?:\.\d+)?)\s*(?:%|percent\b|per\s*cent\b)", re.IGNORECASE)
+_PERCENT_RE = re.compile(r"(?P<num>\d+(?:\.\d+)?)\s*(?:%|percent\b|per\s*cent\b)", re.IGNORECASE)
 _ANY_NUMBER_RE = re.compile(rf"(?P<num>{_NUM})(?:\s*(?P<unit>{_UNIT_ALT})\b)?", re.IGNORECASE)
 _LABELLED = re.compile(
     r"(?<!\w)(?:for example|for instance|e\.g\.|example|illustrat\w*|hypothetical\w*|assum\w*|suppose|say you|"
@@ -179,7 +179,7 @@ class Evidence:
         for v in base:
             derived.extend((v * 12, v / 12))
         for a, b in itertools.combinations(base, 2):
-            derived.extend((a + b, abs(a - b)))
+            derived.extend((a + b, abs(a - b), (a + b) * 12, abs(a - b) * 12))
             if a and b:
                 derived.extend((b / a * 100, a / b * 100))
         if len(base) >= 3:
