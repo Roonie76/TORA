@@ -216,7 +216,7 @@ class ConversationState:
                     "result": out.get("result"),
                 })
                 self.calculations = self.calculations[-MAX_CALCULATIONS:]
-            elif res.tool_name == "finance_calc":
+            elif res.tool_name in ("finance_calc", "tax_calc"):
                 self.calculations.append({
                     "turn": turn,
                     "expression": out.get("operation"),

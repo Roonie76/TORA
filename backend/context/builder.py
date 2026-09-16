@@ -190,16 +190,23 @@ class ContextBuilder:
             return "\n".join(lines)
 
         # Compact rendering for the deterministic finance engine
-        if res.tool_name == "finance_calc" and isinstance(res.output, dict):
+        if res.tool_name in ("finance_calc", "tax_calc") and isinstance(res.output, dict):
             out = res.output
-            skip = {"operation", "inputs", "summary", "assumptions", "yearly_schedule"}
+            skip = {"operation", "inputs", "summary", "assumptions", "yearly_schedule", "slab_breakdown", "notes"}
             figures = ", ".join(f"{k}={v}" for k, v in out.items() if k not in skip and not isinstance(v, (list, dict)))
             lines = [
-                f"- Tool 'finance_calc' ({out.get('operation')}): {out.get('summary', '')}",
+                f"- Tool '{res.tool_name}' ({out.get('operation')}): {out.get('summary', '')}",
                 f"  Inputs: {out.get('inputs')}",
             ]
             if figures:
                 lines.append(f"  Figures: {figures}")
+            for sub in ("new_regime", "old_regime", "deductions_applied"):
+                if isinstance(out.get(sub), dict) and out[sub]:
+                    lines.append(f"  {sub}: {out[sub]}")
+            if out.get("slab_breakdown"):
+                lines.append(f"  Slab breakdown: {out['slab_breakdown']}")
+            if out.get("notes"):
+                lines.append(f"  Notes: {' '.join(out['notes'])}")
             if out.get("payoff_order"):
                 lines.append(f"  Payoff order: {out['payoff_order']}")
             if out.get("yearly_schedule"):

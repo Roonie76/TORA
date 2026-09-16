@@ -22,7 +22,7 @@ from .context import (
     FactExtractor,
     FactManager,
 )
-from .tools import ToolRegistry, CalculatorTool, WebSearchTool, WebFetchTool, ResearchTool, FinanceCalcTool, ToolExecutor
+from .tools import ToolRegistry, CalculatorTool, WebSearchTool, WebFetchTool, ResearchTool, FinanceCalcTool, TaxCalcTool, ToolExecutor
 from .planner import Planner
 from .agent import ToraAgent
 from .state import SessionStore, is_valid_conversation_id
@@ -98,6 +98,7 @@ tool_registry.register(WebSearchTool())
 tool_registry.register(WebFetchTool())
 tool_registry.register(ResearchTool())
 tool_registry.register(FinanceCalcTool())
+tool_registry.register(TaxCalcTool())
 
 tool_executor = ToolExecutor(registry=tool_registry, default_timeout_seconds=TOOL_TIMEOUT_SECONDS)
 llm_provider = OllamaProvider()
