@@ -207,6 +207,9 @@ class ContextBuilder:
                 lines.append(f"  Slab breakdown: {out['slab_breakdown']}")
             if out.get("notes"):
                 lines.append(f"  Notes: {' '.join(out['notes'])}")
+            for listing in ("buckets", "goals", "actions"):
+                if isinstance(out.get(listing), list) and out[listing]:
+                    lines.append(f"  {listing}: {out[listing]}")
             if out.get("payoff_order"):
                 lines.append(f"  Payoff order: {out['payoff_order']}")
             if out.get("yearly_schedule"):

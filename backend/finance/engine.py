@@ -405,6 +405,151 @@ def net_worth(assets: Dict[str, float], liabilities: Dict[str, float]) -> Dict[s
     }
 
 
+
+# ------------------------------------------------------------------ planning
+
+def budget_plan(monthly_income: float, needs: Optional[Dict[str, float]] = None,
+                wants: Optional[Dict[str, float]] = None, emis: float = 0.0,
+                current_savings_per_month: float = 0.0) -> Dict[str, Any]:
+    """50/30/20 budget check with concrete gaps (needs incl. EMIs / wants / savings)."""
+    inc = _pos("monthly_income", monthly_income)
+    need_items = {str(k)[:40]: _pos(f"needs.{k}", v, allow_zero=True) for k, v in (needs or {}).items()}
+    want_items = {str(k)[:40]: _pos(f"wants.{k}", v, allow_zero=True) for k, v in (wants or {}).items()}
+    emi_total = _pos("emis", emis, allow_zero=True)
+    saving = _pos("current_savings_per_month", current_savings_per_month, allow_zero=True)
+    needs_total = sum(need_items.values()) + emi_total
+    wants_total = sum(want_items.values())
+    unallocated = inc - needs_total - wants_total - saving
+    targets = {"needs": inc * 0.5, "wants": inc * 0.3, "savings": inc * 0.2}
+    actual = {"needs": needs_total, "wants": wants_total, "savings": saving + max(0.0, unallocated)}
+    rows = []
+    for k in ("needs", "wants", "savings"):
+        rows.append({
+            "bucket": k,
+            "target": _r(targets[k]),
+            "actual": _r(actual[k]),
+            "actual_percent": _r(actual[k] / inc * 100, 1),
+            "gap": _r(actual[k] - targets[k]),
+        })
+    actions = []
+    if needs_total > targets["needs"]:
+        actions.append(f"Needs (incl. EMIs) exceed 50% by {inr(needs_total - targets['needs'])}; "
+                       "look at rent, EMIs or fixed bills first.")
+    if emi_total / inc > 0.4:
+        actions.append(f"EMIs alone take {emi_total / inc * 100:.0f}% of income — above the ~40% comfort level.")
+    if wants_total > targets["wants"]:
+        actions.append(f"Discretionary spending is {inr(wants_total - targets['wants'])} above 30%.")
+    if actual["savings"] < targets["savings"]:
+        actions.append(f"Savings are {inr(targets['savings'] - actual['savings'])}/month short of 20%.")
+    if unallocated < 0:
+        actions.append(f"Spending exceeds income by {inr(-unallocated)}/month.")
+    return {
+        "operation": "budget_plan",
+        "inputs": {"monthly_income": inc, "needs": need_items, "wants": want_items, "emis": emi_total,
+                   "current_savings_per_month": saving},
+        "buckets": rows,
+        "unallocated": _r(unallocated),
+        "actions": actions,
+        "summary": (f"Needs {actual['needs'] / inc * 100:.0f}% / wants {actual['wants'] / inc * 100:.0f}% / "
+                    f"savings {actual['savings'] / inc * 100:.0f}% of {inr(inc)} (target 50/30/20)."),
+        "assumptions": ["50/30/20 is a starting heuristic, not a rule; any unallocated money is counted as savings."],
+    }
+
+
+def goal_plan(goals: List[Dict[str, Any]], annual_return: float = 10.0,
+              monthly_capacity: Optional[float] = None) -> Dict[str, Any]:
+    """Required monthly SIP per goal, funded in order of deadline within the monthly capacity."""
+    if not goals or len(goals) > 10:
+        raise FinanceInputError("Provide between 1 and 10 goals.")
+    r = _rate("annual_return", annual_return, 50)
+    cap = _pos("monthly_capacity", monthly_capacity, allow_zero=True) if monthly_capacity is not None else None
+    rows = []
+    for idx, g in enumerate(goals):
+        name = str(g.get("name") or f"goal_{idx + 1}")[:40]
+        target = _pos(f"{name}.target", g.get("target"))
+        years = _years(f"{name}.years", g.get("years"))
+        saved = _pos(f"{name}.current_saved", g.get("current_saved", 0), allow_zero=True)
+        grown_saved = saved * (1 + r / 100) ** years
+        remaining = max(0.0, target - grown_saved)
+        unit = sip_future_value(1.0, r, years)["future_value"]
+        rows.append({"name": name, "target": target, "years": years, "current_saved": saved,
+                     "required_monthly": _r(remaining / unit if remaining else 0.0)})
+    rows.sort(key=lambda x: x["years"])
+    budget_left = cap
+    for row in rows:
+        if budget_left is None:
+            row["funded_monthly"] = row["required_monthly"]
+            row["status"] = "unconstrained"
+            continue
+        funded = min(row["required_monthly"], budget_left)
+        budget_left -= funded
+        row["funded_monthly"] = _r(funded)
+        row["status"] = "on_track" if funded >= row["required_monthly"] - 0.01 else "short"
+        if row["status"] == "short":
+            unit = sip_future_value(1.0, r, row["years"])["future_value"]
+            projected = funded * unit + row["current_saved"] * (1 + r / 100) ** row["years"]
+            row["projected_value"] = _r(projected)
+            row["shortfall"] = _r(row["target"] - projected)
+    total_required = sum(x["required_monthly"] for x in rows)
+    summary = f"Goals need {inr(total_required)}/month in total at {r:g}% p.a."
+    if cap is not None:
+        summary += (f" With {inr(cap)}/month available, "
+                    + ("all goals are on track." if total_required <= cap + 0.01
+                       else f"there is a gap of {inr(total_required - cap)}/month (nearest deadlines funded first)."))
+    return {
+        "operation": "goal_plan",
+        "inputs": {"goals": goals, "annual_return": r, "monthly_capacity": cap},
+        "goals": rows,
+        "total_required_monthly": _r(total_required),
+        "summary": summary,
+        "assumptions": ["Constant return; existing savings grow at the same rate; goal amounts are in "
+                        "future rupees (inflate today's costs with inflation_adjust first)."],
+    }
+
+
+def retirement_plan(current_age: float, retirement_age: float, monthly_expenses_today: float,
+                    inflation_rate: float = 6.0, return_before: float = 11.0, return_after: float = 7.0,
+                    life_expectancy: float = 85.0, current_savings: float = 0.0) -> Dict[str, Any]:
+    """Corpus needed at retirement (inflation-indexed withdrawals) and the SIP required to reach it."""
+    age = _pos("current_age", current_age)
+    ret = _pos("retirement_age", retirement_age)
+    life = _pos("life_expectancy", life_expectancy)
+    if not (18 <= age < ret < life <= 110):
+        raise FinanceInputError("Ages must satisfy 18 <= current_age < retirement_age < life_expectancy <= 110.")
+    exp = _pos("monthly_expenses_today", monthly_expenses_today)
+    inf = _rate("inflation_rate", inflation_rate, 20)
+    rb = _rate("return_before", return_before, 30)
+    ra = _rate("return_after", return_after, 30)
+    saved = _pos("current_savings", current_savings, allow_zero=True)
+    years_to = ret - age
+    years_in = life - ret
+    annual_exp_at_ret = exp * 12 * (1 + inf / 100) ** years_to
+    real = (1 + ra / 100) / (1 + inf / 100) - 1
+    n = years_in
+    if abs(real) < 1e-9:
+        corpus = annual_exp_at_ret * n
+    else:  # growing annuity-due (withdraw at the start of each year)
+        corpus = annual_exp_at_ret * (1 - (1 + real) ** (-n)) / real * (1 + real)
+    savings_fv = saved * (1 + rb / 100) ** years_to
+    gap = max(0.0, corpus - savings_fv)
+    unit = sip_future_value(1.0, rb, years_to)["future_value"]
+    sip = gap / unit if gap else 0.0
+    return {
+        "operation": "retirement_plan",
+        "inputs": {"current_age": age, "retirement_age": ret, "monthly_expenses_today": exp,
+                   "inflation_rate": inf, "return_before": rb, "return_after": ra,
+                   "life_expectancy": life, "current_savings": saved},
+        "monthly_expenses_at_retirement": _r(annual_exp_at_ret / 12),
+        "corpus_needed": _r(corpus),
+        "current_savings_future_value": _r(savings_fv),
+        "required_monthly_sip": _r(sip),
+        "summary": (f"Expenses of {inr(exp)}/month today become {inr(annual_exp_at_ret / 12)}/month at {ret:g}. "
+                    f"A corpus of about {inr(corpus)} is needed; investing {inr(sip)}/month until then gets there."),
+        "assumptions": [f"Inflation {inf:g}%, returns {rb:g}% before and {ra:g}% after retirement, "
+                        f"expenses rising with inflation until age {life:g}; taxes, healthcare shocks and "
+                        "pension/EPF income are not modelled."],
+    }
+
 OPERATIONS = {
     "emi": emi,
     "amortization": amortization,
@@ -418,6 +563,9 @@ OPERATIONS = {
     "savings_rate": savings_rate,
     "debt_to_income": debt_to_income,
     "net_worth": net_worth,
+    "budget_plan": budget_plan,
+    "goal_plan": goal_plan,
+    "retirement_plan": retirement_plan,
 }
 
 OPERATION_PARAMS = {
@@ -433,6 +581,10 @@ OPERATION_PARAMS = {
     "savings_rate": "monthly_income, monthly_expenses",
     "debt_to_income": "monthly_debt_payments, monthly_income",
     "net_worth": "assets: {name: amount}, liabilities: {name: amount}",
+    "budget_plan": "monthly_income, [needs: {name: amount}], [wants: {name: amount}], [emis], [current_savings_per_month]",
+    "goal_plan": "goals: [{name, target, years, [current_saved]}], [annual_return], [monthly_capacity]",
+    "retirement_plan": "current_age, retirement_age, monthly_expenses_today, [inflation_rate], [return_before], "
+                       "[return_after], [life_expectancy], [current_savings]",
 }
 
 

@@ -10,7 +10,7 @@ from ..finance.engine import OPERATION_PARAMS, run_operation
 OperationName = Literal[
     "emi", "amortization", "sip_future_value", "sip_change_impact", "required_sip",
     "compound_growth", "inflation_adjust", "debt_payoff", "emergency_fund",
-    "savings_rate", "debt_to_income", "net_worth",
+    "savings_rate", "debt_to_income", "net_worth", "budget_plan", "goal_plan", "retirement_plan",
 ]
 
 
@@ -30,7 +30,8 @@ class FinanceCalcTool(BaseTool):
     description: str = (
         "Deterministic personal-finance calculator. Use for EMIs, loan prepayment/amortization, SIP and "
         "lump-sum growth, SIP what-if changes, required SIP for a goal, inflation, debt payoff plans, "
-        "emergency fund, savings rate, debt-to-income and net worth. Operations and params: " + _PARAM_DOC
+        "emergency fund, savings rate, debt-to-income, net worth, 50/30/20 budget plans, multi-goal plans and "
+        "retirement corpus planning. Operations and params: " + _PARAM_DOC
     )
     args_schema: Type[BaseModel] = FinanceCalcInput
 
