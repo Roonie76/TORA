@@ -583,7 +583,10 @@ class FinancialProfile:
                 orig = self.income.format_value(self.income.get_original_value())
                 prev = self.income.format_value(self.income.get_previous_value())
                 prov = f" (Original: {orig}, Previous: {prev})" if orig != prev else f" (Previous: {prev})"
-            current_facts.append(f"- Monthly Income: {self.income.format_value()}{prov}")
+            stated = ""
+            if self.income.notes and "per year)" in self.income.notes:
+                stated = " (" + self.income.notes.rsplit("(", 1)[-1].rstrip(")") + ")"
+            current_facts.append(f"- Monthly Income: {self.income.format_value()}{stated}{prov}")
 
         if self.rent and self.rent.status == FactStatus.CURRENT.value:
             prov = ""

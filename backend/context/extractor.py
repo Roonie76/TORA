@@ -32,7 +32,7 @@ def parse_inr_amount(text: str) -> Optional[float]:
             pass
 
     # Match lakh / lac / L
-    lakh_match = re.search(r"\b([\d,.]+)\s*(?:lakh|lakhs|lac|lacs|l)\b", clean)
+    lakh_match = re.search(r"\b([\d,.]+)\s*(?:lakh|lakhs|lac|lacs|lpa|l)\b", clean)
     if lakh_match:
         try:
             num = float(lakh_match.group(1).replace(",", ""))
@@ -71,6 +71,30 @@ _CORRECTION_CUES = re.compile(
     r"\b(?:actually|correction|sorry|make\s+that|updated?|latest|now|it\s+is|it's|its|no)\b",
     re.IGNORECASE,
 )
+
+
+_OTHER_FINANCE_WORDS = re.compile(
+    r"\b(?:mutual|mf|gold|sips?|car|house|home|savings?|emergency|food|groceries|commute|travel|fuel|fds?|"
+    r"deposit|insurance|stocks?|shares?|ppf|epf|nps|tax)\b",
+    re.IGNORECASE,
+)
+_ANNUAL_CUE = re.compile(r"\b(?:per\s*annum|p\.?\s?a\b|a\s*year|per\s*year|yearly|annual(?:ly)?|lpa|ctc|every\s*year)", re.IGNORECASE)
+_MONTHLY_CUE = re.compile(r"\b(?:per\s*month|a\s*month|monthly|every\s*month|pm\b|/\s*month|in\s*hand)", re.IGNORECASE)
+ANNUAL_SALARY_THRESHOLD = 500000.0
+
+
+def _income_monthly(amount: float, clause: str):
+    """
+    Normalise a stated income to a monthly figure. Explicit cues win; otherwise an
+    amount of ₹5 lakh or more is read the Indian way (annual package, e.g. "18 lakh salary").
+    Returns (monthly_value, note_or_None).
+    """
+    annual = bool(_ANNUAL_CUE.search(clause))
+    monthly = bool(_MONTHLY_CUE.search(clause))
+    if annual and not monthly or (not monthly and not annual and amount >= ANNUAL_SALARY_THRESHOLD):
+        from ..finance.engine import inr  # local import keeps context independent at import time
+        return round(amount / 12, 2), f"stated as {inr(amount)} per year"
+    return amount, None
 
 
 def _is_question(text: str) -> bool:
@@ -283,7 +307,7 @@ class FactExtractor:
             detected_entities = []
 
             # 1. Detect entity clues in clause
-            if any(w in c_lower for w in ("salary", "income", "take home", "earn", "earning")):
+            if any(w in c_lower for w in ("salary", "income", "take home", "earn", "earning", "ctc", "package")):
                 detected_entities.append("income")
             if any(w in c_lower for w in ("rent", "housing")):
                 detected_entities.append("rent")
@@ -292,23 +316,34 @@ class FactExtractor:
             if any(w in c_lower for w in ("emi", "personal loan", "loan")):
                 detected_entities.append("loan")
 
-            effective_entity = inherited_entity or (detected_entities[0] if detected_entities else context_entity)
+            fallback_entity = (
+                context_entity
+                if _CORRECTION_CUES.search(clause_text) and not _OTHER_FINANCE_WORDS.search(clause_text)
+                else None
+            )
+            effective_entity = inherited_entity or (detected_entities[0] if detected_entities else fallback_entity)
 
             # 2. Income / Salary
             inc_match = re.search(
-                r"(?:\b(?:salary|income|take\s*home|earn|earning|earned|made|make)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)\s*(?:salary|income|take\s*home))",
+                r"(?:(?<!other )(?<!rental )(?<!interest )(?<!dividend )(?<!side )\b(?:salary|income|take\s*home|earn|earning|earned|made|make|ctc|package)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:salary|income|take\s*home))",
                 c_lower,
             )
-            if not inc_match and effective_entity == "income" and _allows_loose_amount(clause_text):
+            if (
+                not inc_match
+                and effective_entity == "income"
+                and _allows_loose_amount(clause_text)
+                and not re.search(r"\b(?:other|rental|interest|dividend|side)\s+income|\bgains?\b", c_lower)
+            ):
                 amt = parse_inr_amount(c_lower)
                 if amt and amt >= 5000:
+                    monthly_amt, income_note = _income_monthly(amt, c_lower)
                     candidates.append({
                         "name": "income",
-                        "value": amt,
+                        "value": monthly_amt,
                         "category": "income",
                         "period": "monthly",
                         "status": clause_status,
-                        "notes": clause_text.strip(),
+                        "notes": clause_text.strip() + (f" ({income_note})" if income_note else ""),
                     })
                     if "income" not in detected_entities:
                         detected_entities.append("income")
@@ -316,20 +351,21 @@ class FactExtractor:
                 val_str = inc_match.group(1) or inc_match.group(2)
                 amt = parse_inr_amount(val_str)
                 if amt and amt >= 5000:
+                    monthly_amt, income_note = _income_monthly(amt, c_lower)
                     candidates.append({
                         "name": "income",
-                        "value": amt,
+                        "value": monthly_amt,
                         "category": "income",
                         "period": "monthly",
                         "status": clause_status,
-                        "notes": clause_text.strip(),
+                        "notes": clause_text.strip() + (f" ({income_note})" if income_note else ""),
                     })
                     if "income" not in detected_entities:
                         detected_entities.append("income")
 
             # 3. Rent
             rent_match = re.search(
-                r"(?:\b(?:rent)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)\s*(?:rent))",
+                r"(?:\b(?:rent)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:rent))",
                 c_lower,
             )
             if not rent_match and effective_entity == "rent" and _allows_loose_amount(clause_text):
@@ -362,7 +398,7 @@ class FactExtractor:
 
             # 4. Food / Groceries
             food_match = re.search(
-                r"\b(?:food|groceries)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:food|groceries)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
                 c_lower,
             )
             if food_match:
@@ -380,7 +416,7 @@ class FactExtractor:
 
             # 5. Commute / Travel
             commute_match = re.search(
-                r"\b(?:commute|transport|travel|fuel)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:commute|transport|travel|fuel)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
                 c_lower,
             )
             if commute_match:
@@ -398,13 +434,14 @@ class FactExtractor:
 
             # 6. Personal Loan / EMI
             emi_match = re.search(
-                r"(?:\b(?:personal\s*loan|loan\s*emi|monthly\s*emi|emi)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)\s*(?:monthly\s*emi|personal\s*loan|emi))",
+                r"(?:\b(?:personal\s*loan|loan\s*emi|monthly\s*emi|emi)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:monthly\s*emi|personal\s*loan|emi))",
                 c_lower,
             )
             if emi_match:
                 val_str = emi_match.group(1) or emi_match.group(2)
                 amt = parse_inr_amount(val_str)
-                if amt and 1000 <= amt <= 1000000:
+                is_emi = bool(re.search(r"\bemis?\b|per\s*month|a\s*month|monthly", emi_match.group(0)))
+                if is_emi and amt and 1000 <= amt <= 1000000:
                     candidates.append({
                         "name": "personal_loan_emi",
                         "value": amt,
@@ -412,12 +449,21 @@ class FactExtractor:
                         "period": "monthly",
                         "status": clause_status,
                     })
+                elif not is_emi and amt and amt >= 10000:
+                    # "a personal loan of 3 lakh" is an outstanding balance, not a monthly EMI
+                    candidates.append({
+                        "name": "personal_loan_balance",
+                        "value": amt,
+                        "category": "loan",
+                        "period": "lump_sum",
+                        "status": clause_status,
+                    })
                     if "loan" not in detected_entities:
                         detected_entities.append("loan")
 
             # 7. Credit Card Debt / Balance
             cc_match = re.search(
-                r"\b(?:credit\s*card|cc\s*debt|cc\s*balance|card\s*balance|outstanding\s*balance|card\s*statement|statement|balance)\b[^\d\n]{0,50}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:credit\s*card|cc\s*debt|cc\s*balance|card\s*balance|outstanding\s*balance|card\s*statement|statement|balance)\b[^\d\n]{0,50}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
                 c_lower,
             )
             if not cc_match and effective_entity == "debt" and _allows_loose_amount(clause_text):
@@ -468,7 +514,7 @@ class FactExtractor:
 
             # 9. Savings / Emergency Fund
             savings_match = re.search(
-                r"(?:\b(?:savings|emergency\s*fund|bank\s*balance)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)\s*(?:in\s*savings|in\s*bank\s*savings|savings|emergency\s*fund))",
+                r"(?:\b(?:savings|emergency\s*fund|bank\s*balance)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:in\s*savings|in\s*bank\s*savings|savings|emergency\s*fund))",
                 c_lower,
             )
             if savings_match:
@@ -485,9 +531,28 @@ class FactExtractor:
                     if "savings" not in detected_entities:
                         detected_entities.append("savings")
 
+            # 9b. Monthly SIP amount (not the size of a change like "increase my SIP by 5000")
+            sip_match = re.search(
+                r"(?:\b(?:sips?|systematic\s*investment\s*plans?)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakhs|lakh|lacs|lac|l|k)\b)?)"
+                r"|(₹?\s*\d[\d,]*(?:\.\d+)?(?:\s*(?:lakhs|lakh|lacs|lac|l|k)\b)?)[^\d\n]{0,25}?\b(?:sips?|systematic\s*investment\s*plans?)\b)",
+                c_lower,
+            )
+            if sip_match and not re.search(r"\b(?:increase|decrease|raise|reduce|by|step[- ]?up|top[- ]?up)\b", c_lower):
+                amt = parse_inr_amount(sip_match.group(1) or sip_match.group(2))
+                if amt and 100 <= amt <= 1000000:
+                    candidates.append({
+                        "name": "sip_monthly",
+                        "value": amt,
+                        "category": "investment",
+                        "period": "monthly",
+                        "status": clause_status,
+                    })
+                    if "investment" not in detected_entities:
+                        detected_entities.append("investment")
+
             # 10. Mutual Funds
             mf_match = re.search(
-                r"(?:\b(?:mutual\s*funds|mf)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)\s*(?:in\s*mutual\s*funds|in\s*mf|mutual\s*funds))",
+                r"(?:\b(?:mutual\s*funds|mf)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:in\s*mutual\s*funds|in\s*mf|mutual\s*funds))",
                 c_lower,
             )
             if mf_match:
@@ -506,7 +571,7 @@ class FactExtractor:
 
             # 11. Gold
             gold_match = re.search(
-                r"(?:\b(?:gold|gold\s*worth)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)\s*(?:in\s*gold|worth\s*of\s*gold|gold))",
+                r"(?:\b(?:gold|gold\s*worth)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:in\s*gold|worth\s*of\s*gold|gold))",
                 c_lower,
             )
             if gold_match:
@@ -525,7 +590,7 @@ class FactExtractor:
 
             # 12. Car Goal / Major Goal
             goal_match = re.search(
-                r"\b(?:car|vehicle|buy\s*a\s*car|car\s*goal)\b[^\d\n]{0,45}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:car|vehicle|buy\s*a\s*car|car\s*goal)\b[^\d\n]{0,45}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
                 c_lower,
             )
             if goal_match:

@@ -93,12 +93,14 @@ _ARITHMETIC = re.compile(r"\d\s*[*/+^×÷x-]\s*\d|\b(?:calculate|compute|how muc
                          r"future value|corpus|payoff|pay off .* in)\b", re.IGNORECASE)
 _CALC_TOPIC_WITH_NUMBER = re.compile(
     r"(?=.*\d)(?=.*\b(?:emi|sip|corpus|maturity|compound|amortization|prepay\w*|how much tax|tax on|tax payable|"
-    r"regime is better|which regime|net worth|debt[- ]free|retire\w*)\b)", re.IGNORECASE | re.DOTALL)
+    r"regime is better|which regime|net worth|debt[- ]free|retire\w*|inflation|payoff|pay off)\b)", re.IGNORECASE | re.DOTALL)
+_REQUEST_WORDS = re.compile(r"\b(?:help|plan|calculate|compute|compare|tell me|show|explain|suggest|advise|"
+                            r"recommend|should|can you|could you|please|how|what|which|why)\b", re.IGNORECASE)
 _WHAT_IF = re.compile(r"\b(?:what if|suppose|assuming|assume|imagine|hypothetically|let'?s say|if i (?:increase|decrease|"
                       r"invest|take|pay|prepay|earn|save|stop|start|switch)|if my)\b", re.IGNORECASE)
 _COMPARISON = re.compile(r"\b(?:compare|comparison|vs\.?|versus|which is (?:better|cheaper|best)|better than|"
                          r"cheapest|lowest|highest|best)\b", re.IGNORECASE)
-_CURRENT_INFO = re.compile(r"\b(?:current|currently|latest|today|now|this (?:week|month|year)|live|recent|new|"
+_CURRENT_INFO = re.compile(r"\b(?:current|currently|latest|today|now|this (?:week|month|year)|live|recent|"
                            r"rates?|interest rates?|charges?|fees?|circular|notification|announced)\b", re.IGNORECASE)
 _MEMORY_RECALL = re.compile(r"\b(?:what (?:is|was|were|are) my|my (?:previous|original|old|last|current)|"
                             r"what did i (?:say|tell|mention)|remind me|do you remember|what do you know about me|"
@@ -208,6 +210,8 @@ class IntentClassifier:
 
         if _WHAT_IF.search(text):
             intent = Intent.WHAT_IF
+        elif extracted_facts and "?" not in text and not _REQUEST_WORDS.search(text) and not _ARITHMETIC.search(text):
+            intent = Intent.MEMORY_UPDATE
         elif _ARITHMETIC.search(text) or _CALC_TOPIC_WITH_NUMBER.match(text):
             intent = Intent.CALCULATION
         elif _MEMORY_RECALL.search(text) and _MEMORY_FACT_WORDS.search(text) and not entities:
