@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..agent.agent import ToraAgent
+from ..context.llm_extractor import EXTRACTOR_PREFIX
 from ..context import ConversationContext, FinancialProfile, MessageRole
 from ..llm.base import LLMProvider, LLMResponse
 from ..planner import Planner
@@ -89,6 +90,9 @@ class ScriptedLLM(LLMProvider):
         if messages and messages[0]["content"].startswith(PLANNER_PREFIX):
             plan = turn.get("plan") or {"thought": "no tools", "requires_tools": False, "steps": []}
             return LLMResponse(content=json.dumps(plan), model="scripted")
+        if messages and messages[0]["content"].startswith(EXTRACTOR_PREFIX):
+            self._harness.extraction_calls += 1
+            return LLMResponse(content=json.dumps(turn.get("extraction") or {"facts": []}), model="scripted")
         answers = self._harness.pending_answers
         text = answers.pop(0) if answers else "OK."
         return LLMResponse(content=text, model="scripted")
@@ -151,6 +155,7 @@ class EvalHarness:
         self.current_fixtures: Dict[str, Any] = {}
         self.pending_answers: List[str] = []
         self.captured: List[List[Dict[str, str]]] = []
+        self.extraction_calls = 0
         if provider is None:
             if mode == "offline":
                 provider = ScriptedLLM(self)
@@ -203,6 +208,7 @@ class EvalHarness:
             answers = turn.get("answers") or ([turn["answer"]] if turn.get("answer") else [])
             self.pending_answers = list(answers)
             self.captured = []
+            self.extraction_calls = 0
             tr = TurnResult(index=idx, user=turn["user"])
             started = time.monotonic()
             try:
@@ -221,12 +227,17 @@ class EvalHarness:
             tr.answer = response.content
             tr.intent = response.intent.intent.value if response.intent else None
             tr.tools = [r.tool_name for r in (response.tool_context.results if response.tool_context else [])]
-            answer_msgs = [m for m in self.captured if not m[0]["content"].startswith(PLANNER_PREFIX)] \
+            answer_msgs = [m for m in self.captured
+                           if not m[0]["content"].startswith((PLANNER_PREFIX, EXTRACTOR_PREFIX))] \
                 if self.mode == "offline" else []
             final_prompt = answer_msgs[0] if answer_msgs else None
             planner_called = any(m[0]["content"].startswith(PLANNER_PREFIX) for m in self.captured) \
                 if self.mode == "offline" else (response.plan is not None)
             tr.checks = self._check(turn.get("expect", {}), response, profile, state, final_prompt, planner_called)
+            if "model_extraction" in turn.get("expect", {}) and self.mode == "offline":
+                want = turn["expect"]["model_extraction"]
+                tr.checks.append(CheckResult("model_extraction", (self.extraction_calls > 0) == want,
+                                             f"calls={self.extraction_calls}"))
             history.append({"role": "user", "content": turn["user"]})
             history.append({"role": "assistant", "content": response.content})
             result.turns.append(tr)

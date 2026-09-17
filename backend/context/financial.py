@@ -309,6 +309,8 @@ class FinancialProfile:
         # Infer category
         if "emi" in clean_name or "loan" in clean_name:
             return self.loans
+        if clean_name in ("fixed_deposit", "stocks", "ppf", "epf", "sip_monthly", "mutual_funds", "gold"):
+            return self.investments
         if any(w in clean_name for w in ("card", "debt", "apr", "interest", "balance")):
             return self.debts
         if any(w in clean_name for w in ("mutual", "gold", "stock")):

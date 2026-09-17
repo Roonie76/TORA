@@ -16,6 +16,7 @@ from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
 from ..context.extractor import extract_memory_commands
+from ..context.llm_extractor import propose_facts, should_try as should_try_llm_extraction
 from ..observability import TraceTimer, current_trace
 from ..verify import build_evidence, caveat_note, correction_instruction, verify_answer
 from ..context import (
@@ -185,6 +186,15 @@ class ToraAgent:
                     len(active_profile.history),
                 )
 
+        # 1a. Model-assisted extraction when the rules found nothing in a money statement
+        model_facts: List[Dict[str, Any]] = []
+        if isinstance(active_profile, FinancialProfile) and should_try_llm_extraction(message, candidates):
+            model_facts = await propose_facts(self.llm_provider, message, model=model)
+            if model_facts:
+                FactManager.apply_candidates(active_profile, model_facts, turn=turn)
+                candidates = list(model_facts)
+                logger.info("Model-assisted extraction accepted %d fact(s).", len(model_facts))
+
         # 1b. Intent classification + topic tracking (conversation-aware)
         memory_commands = [c for c in candidates if c.get("action") or c.get("closure")]
         if not memory_commands and not candidates:
@@ -202,6 +212,7 @@ class ToraAgent:
             trace.intent = intent.intent.value
             trace.is_followup = intent.is_followup
             trace.turn = turn
+            trace.model_facts = len(model_facts)
         logger.info(
             "Intent=%s followup=%s entities=%s topic=%s",
             intent.intent.value, intent.is_followup, intent.entities,

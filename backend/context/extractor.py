@@ -668,7 +668,7 @@ class FactManager:
                 category=cand.get("category", "general"),
                 period=cand.get("period"),
                 status=cand.get("status", FactStatus.CURRENT.value),
-                source="user",
+                source=cand.get("source", "user"),
                 notes=cand.get("notes"),
                 turn=turn,
                 is_correction=bool(cand.get("correction")),

@@ -48,6 +48,7 @@ class TurnTrace:
     llm: Dict[str, Any] = field(default_factory=lambda: {
         "calls": 0, "ms": 0.0, "prompt_tokens": 0, "completion_tokens": 0, "model": None})
     prompt_tokens_estimate: Optional[int] = None
+    model_facts: int = 0
     overflow_retry: bool = False
     grounding: Optional[Dict[str, Any]] = None
     status: str = "in_progress"
