@@ -70,6 +70,11 @@ _IMPERSONAL_CALC = re.compile(
     r"\b(?:tax|taxes|regime|surcharge|rebate|emi\s+(?:for|on|of)|sip\s+of|corpus|calculate|compute)\b",
     re.IGNORECASE,
 )
+_EXPLICIT_OWN_AMOUNT = re.compile(
+    r"\b(?:my|i)\s+(?:\w+\s+){0,2}?(?:salary|income|ctc|package|take[- ]?home|rent|emi|balance|savings)\s+(?:is|was|of|=)|"
+    r"\bi\s+(?:earn|make|get|take\s+home|pay|have|invest|spend)\b",
+    re.IGNORECASE,
+)
 _FIRST_PERSON = re.compile(r"\b(?:i|i'm|im|i've|my|me|mine)\b", re.IGNORECASE)
 _ARITHMETIC = re.compile(r"\d\s*[*/+^x×÷-]\s*\d|\b(?:calculate|compute|evaluate)\b", re.IGNORECASE)
 _CORRECTION_CUES = re.compile(
@@ -331,6 +336,14 @@ class FactExtractor:
             overall_status == FactStatus.CURRENT.value
             and _is_question(clean_text)
             and not _FIRST_PERSON.search(clean_text)
+        ):
+            return candidates
+        # Tax / calculation questions about an amount ("What was my tax for 2019-20 on a 10 lakh
+        # salary?") are not statements of the user's income unless they say so explicitly.
+        if (
+            _is_question(clean_text)
+            and _IMPERSONAL_CALC.search(clean_text)
+            and not _EXPLICIT_OWN_AMOUNT.search(clean_text)
         ):
             return candidates
         # Impersonal calculation requests ("Tax on 60 lakh income", "Super senior

@@ -83,3 +83,17 @@ def test_forget_and_close_typed_loans():
     assert {c["name"] for c in extract_memory_commands("forget my home loan")} == {"home_loan_emi", "home_loan_balance"}
     closed = extract_memory_commands("I paid off my car loan")
     assert {c["name"] for c in closed} == {"car_loan_emi", "car_loan_balance"} and all(c["closure"] for c in closed)
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("What was my tax for 2019-20 on a 10 lakh salary?", {}),
+    ("How much tax on a 12.75 lakh salary this year?", {}),
+    ("My salary is 1.5 lakh a month. How much tax will I pay under the new regime?", {"income": 150000.0}),
+])
+def test_tax_questions_do_not_become_salary(message, expected):
+    assert facts(message) == expected
+
+
+def test_planner_prompt_passes_named_tax_years():
+    from backend.prompts.planner import get_planner_system_prompt
+    assert "pass it as 'tax_year' exactly" in get_planner_system_prompt([])
