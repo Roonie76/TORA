@@ -14,6 +14,7 @@ ollama pull gemma4:e4b   # keep `ollama serve` running
 $env:TORA_DEBUG_ENDPOINTS="1"
 $env:TORA_RATE_LIMIT_PER_MINUTE="0"   # disable limits for manual runs (A3 re-enables)
 $env:TORA_GROUNDING_MODE="regenerate"
+# optional: $env:TORA_FAST_PATH="on" (default) · $env:TORA_COMPLEX_MODEL / TORA_COMPLEX_THINK for complex cases · $env:TORA_TRAINING_LOG only with consent
 # optional: $env:TORA_LLM_THINK="false" (default) · $env:TORA_MAX_ANSWER_TOKENS="700" on slow CPUs · $env:TORA_AUTH_MODE="optional" for the Accounts section
 python -m uvicorn backend.main:app --port 8000
 npm run web   # second terminal, for the UI section
@@ -56,7 +57,7 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- 879 passed, 0 failed (warnings from FastAPI/anyio are fine)
+- 987 passed, 0 failed (warnings from FastAPI/anyio are fine)
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -68,9 +69,9 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- Prints Scenarios: 126/126 passed · checks: 332/332
+- Prints Scenarios: 155/155 passed · checks: 423/423
 - Exit code 0
-- The category table includes language (Hinglish/typos) and accounts
+- The category table includes language, accounts, routing, debt, advice and rules
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -1760,5 +1761,436 @@ Needs the Spendsy gateway running (auth on :8080/auth, finance on :8080/finance)
 
 - First user gets figures from their records
 - Second user starts fresh (the old conversation id is ignored with a new conversation) and sees none of user A's facts
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Speed and effort scaling (Phase 7)
+
+Clear-cut requests skip the slow planning step; complex decisions get the full treatment. Watch tora-trace: planner.fast_path and complexity.
+
+### F1 — Fast path for exact calculations
+
+**Do**
+
+1. `tora-new`
+2. `tora 'EMI on 30 lakh loan at 8.4% for 25 yrs'`
+3. `tora-trace`
+
+**Expect**
+
+- tora-trace: planner.used = false, planner.fast_path = true, tools = [finance_calc], complexity simple
+- Noticeably faster than a planner turn
+
+**Correct figures:** EMI ₹23,955/month
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### F2 — Unclear requests still use the planner
+
+**Do**
+
+1. `tora 'If I prepay 5000 extra every month on that loan, how much interest do I save?'`
+2. `tora 'EMI for 5 lakh at 10% for 3 years and 7 lakh at 9% for 5 years?'`
+3. `tora-trace`
+
+**Expect**
+
+- Both turns: planner.used = true (follow-up and two loans are not guessed by the fast path)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### F3 — Greetings skip everything
+
+**Do**
+
+1. `tora 'Hi TORA, how are you?'`
+2. `tora-trace`
+
+**Expect**
+
+- planner.used = false, tools = [], complexity simple
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### F4 — Complex decisions scale up
+
+**Do**
+
+1. `tora 'I have 3 loans: personal 3 lakh at 14%, card 1.5 lakh at 42%, car 4 lakh at 9%. I can pay 35k a month. Should I consolidate or pay off the card first?'`
+2. `tora-trace`
+
+**Expect**
+
+- complexity = complex; the answer states facts used, compares options with rupee figures, recommends one and lists what to confirm
+- TORA never claims to be a CA
+- Optional: restart with $env:TORA_COMPLEX_MODEL="<bigger model>" and $env:TORA_COMPLEX_THINK="on" — only complex turns use them
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Debt rescue (Phase 8)
+
+For people under debt stress. Figures come from the debt engine; tone should be calm and practical.
+
+### D1 — Rescue plan from remembered debts
+
+**Do**
+
+1. `tora-new`
+2. `tora 'My credit card balance is 1.55 lakh at 42% and the minimum due is 7750'`
+3. `tora 'I also have a personal loan of 3 lakh at 14% with EMI 10k'`
+4. `tora 'I earn 70k and my essential expenses are 35k. I cannot manage, how do I get out of debt?'`
+
+**Expect**
+
+- Turn 3: [planning], tools = [finance_calc] (debt_rescue_plan)
+- Debt-free in 15 months with about ₹58,812 interest by sending ₹35,000 a month; card cleared first (month 8)
+- Shows how much paying only minimums would cost and what ₹2,000 / ₹5,000 extra would save
+- No shaming; clear first actions
+
+**Correct figures:** 15 months · ₹58,812 interest (avalanche)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### D2 — Income cannot cover the minimums
+
+**Do**
+
+1. `tora 'I earn 45k, essentials are 30k, my card (1.55 lakh at 42%) needs 7750 minimum and the personal loan (3 lakh at 14%) EMI is 10k. What do I do?'`
+
+**Expect**
+
+- Says the shortfall is ₹2,750 a month
+- Suggests talking to lenders in writing about restructuring before missing payments; warns against app loans
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### D3 — Minimum-due trap
+
+**Do**
+
+1. `tora 'What happens if I only pay the minimum due on my 1.55 lakh card at 42%?'`
+
+**Expect**
+
+- Paying only the minimum takes about 21 years and far more interest than a fixed ₹7,750 a month (35 months)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### D4 — Consolidation check
+
+**Do**
+
+1. `tora 'Should I take a 13% loan for 3 years with 2% fee to close my card (1.55 lakh at 42%, min 7750) and personal loan (3 lakh at 14%, EMI 10k)?'`
+
+**Expect**
+
+- verdict consolidate; fee ₹9,100; notes that cleared cards must not be reused
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### D5 — Borrower rights and distress
+
+**Do**
+
+1. `tora 'A recovery agent keeps calling me at 10 pm and threatening me'`
+2. `tora 'I feel hopeless about this debt'`
+
+**Expect**
+
+- Explains RBI limits (8 am–7 pm, no threats), lender grievance then RBI Integrated Ombudsman (cms.rbi.org.in)
+- Second reply responds with care first and mentions Tele-MANAS 14416
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Comparing options (Phase 9)
+
+TORA values each option the same way, recommends one, shows the break-even and what to confirm.
+
+### V1 — Prepay or invest
+
+**Do**
+
+1. `tora 'I have 30 lakh left on my home loan at 8.5% for 15 more years and 10k spare every month. Should I prepay or invest in a SIP?'`
+
+**Expect**
+
+- tools = [finance_calc] (prepay_vs_invest); recommends invest with medium confidence
+- Mentions that investing wins only above about 9.1% returns, and lists points to confirm
+
+**Correct figures:** Prepay ₹39,03,145 · invest ₹46,11,952 · split ₹41,99,754 (net worth at loan end)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V2 — Rent or buy
+
+**Do**
+
+1. `tora 'Should I buy an 80 lakh flat with a loan at 8.5% or keep renting at 25k a month?'`
+
+**Expect**
+
+- Recommends rent and invest unless prices grow faster than about 7.2% a year; upfront cash ₹21,60,000
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V3 — Loan tenure
+
+**Do**
+
+1. `tora '50 lakh home loan at 8.5% — 15 years or 25 years and invest the difference?'`
+
+**Expect**
+
+- EMIs ₹49,237 vs ₹40,261; recommends the shorter tenure (low confidence, thin return spread)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V4 — Financial health check
+
+**Do**
+
+1. `tora 'I earn 80k, spend 40k, EMIs 15k, 50k saved, 1 lakh card debt, invest 5k, wife and child depend on me. Where do I stand?'`
+
+**Expect**
+
+- Score 50/100 (needs attention); first priority: build the emergency fund to ₹3,30,000; then clear the card; then insurance
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Rules library and citations (Phase 10)
+
+Rule questions are answered from TORA's reviewed library with the legal section, not from memory or web search.
+
+### L1 — Library check
+
+**Do**
+
+1. `python -m backend.knowledge check`
+2. `python -m backend.knowledge search "80C limit" 2026-27`
+
+**Expect**
+
+- 33 rules, OK
+- Search returns the 80C rule citing Section 123 of the Income-tax Act, 2025 (earlier 80C)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### L2 — Rule question with citation
+
+**Do**
+
+1. `tora 'What is the 80C limit?'`
+2. `tora-trace`
+
+**Expect**
+
+- tools = [rules_lookup] via fast path; answer ₹1,50,000, old regime only, cites Section 123 (earlier 80C)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### L3 — Deadlines and rights
+
+**Do**
+
+1. `tora 'Last date to file ITR?'`
+2. `tora 'How do I complain against my bank?'`
+
+**Expect**
+
+- Mentions 31 July / 31 August 2026 and belated returns until 31 December 2026 for income of 2025-26
+- Lender grievance first, then RBI Integrated Ombudsman (cms.rbi.org.in, 14448)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### L4 — Tax answers carry their legal basis
+
+**Do**
+
+1. `tora 'How much tax on a 12.75 lakh salary this year?'`
+
+**Expect**
+
+- Answer ₹0 and may cite Section 156 (rebate) and Section 202 (new regime)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Reading documents (Phase 11)
+
+Upload from the TORA page (📎) or via the API. Nothing is remembered until you choose Save to memory.
+
+### K1 — Salary slip
+
+**Do**
+
+1. `In the TORA page click 📎 and choose backend/tests/fixtures/documents/salary_slip.txt (or a real slip PDF)`
+
+**Expect**
+
+- TORA lists take-home ₹84,000 and PF ₹6,000 with Save / Don't save buttons
+- Save → mem() shows Monthly Income ₹84,000 (source document)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### K2 — Bank statement
+
+**Do**
+
+1. `Upload backend/tests/fixtures/documents/bank_statement.csv`
+2. `Ask: What did my bank statement show?`
+
+**Expect**
+
+- Finds salary ₹84,000, EMI ₹12,000 to Bajaj Finance, rent ₹22,000 and a ₹590 bank charge warning
+- The answer uses those figures
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### K3 — Form 16 and tax review
+
+**Do**
+
+1. `Upload backend/tests/fixtures/documents/form16.txt`
+2. `Ask: Looking at my Form 16, am I on the right tax regime and can I save more tax?`
+
+**Expect**
+
+- Reads gross ₹12,50,000, 80C ₹1,50,000, TDS ₹1,28,960 (old regime)
+- TORA compares regimes / finds unused deductions with tax_calc
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### K4 — Password-protected PDF
+
+**Do**
+
+1. `Upload a password-protected bank statement PDF`
+
+**Expect**
+
+- TORA asks for the password; a wrong password gives “The PDF password is incorrect.”
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### K5 — Privacy
+
+**Do**
+
+1. `Invoke-RestMethod http://127.0.0.1:8000/api/conversations/$cid | ConvertTo-Json -Depth 6`
+
+**Expect**
+
+- state.documents holds only the summary — no raw text; PAN and account numbers are masked
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Complete individual tax (Phase 12)
+
+Specialised tax calculations. Figures are from the tax engine for tax year 2026-27 unless stated.
+
+### Q1 — HRA
+
+**Do**
+
+1. `tora 'My basic is 50k, HRA 20k and I pay 25k rent in Mumbai. How much HRA is exempt?'`
+
+**Expect**
+
+- tools = [tax_calc] (hra_exemption); old regime only
+
+**Correct figures:** Exempt ₹2,40,000 a year
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### Q2 — Property sale
+
+**Do**
+
+1. `tora 'I bought a flat in June 2010 for 30 lakh and sold it in August 2026 for 90 lakh. How much tax do I pay?'`
+
+**Expect**
+
+- Compares 12.5% without indexation (₹7,50,000) with 20% with indexation (CII 167 → 384) and uses the lower
+- Mentions s.54 / 54EC reinvestment
+
+**Correct figures:** Tax about ₹4,37,174 including cess
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### Q3 — Advance tax
+
+**Do**
+
+1. `tora 'My tax this year will be about 1.5 lakh, TDS 40k and I have paid 10k advance tax. What do I pay and when?'`
+
+**Expect**
+
+- Liability ₹1,10,000; behind by ₹39,500; pay ₹72,500 by 15 December 2026
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### Q4 — Which ITR form
+
+**Do**
+
+1. `tora 'I have salary of 9 lakh and sold mutual funds with 2 lakh long-term gains. Which ITR form should I file?'`
+
+**Expect**
+
+- ITR-2, because listed-equity gains exceed ₹1.25 lakh
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### Q5 — Tax-saving finder
+
+**Do**
+
+1. `tora 'I earn 15 lakh, invest 50k in 80C, pay 30k rent with 60k basic and 25k HRA. Am I on the right regime? How can I save tax?'`
+
+**Expect**
+
+- New regime ₹97,500 is cheaper now; lists unused 80C (₹1,00,000), NPS (₹50,000) and 80D with old-regime savings
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Feedback and training data (Phase 13)
+
+Off by default. Enable only with users' consent.
+
+### Z1 — Ratings in the UI
+
+**Do**
+
+1. `Send any question in the TORA page, click 👍 or 👎 on the answer`
+
+**Expect**
+
+- The icon stays highlighted; GET /api/conversations/<id> shows meta.feedback on that turn
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### Z2 — Training log and export
+
+**Do**
+
+1. `Restart with $env:TORA_TRAINING_LOG="backend\.data\training.jsonl"`
+2. `Chat a few turns and rate them`
+3. `python -m backend.observability.training_log export training_export.jsonl backend\.data\training.jsonl`
+
+**Expect**
+
+- training.jsonl has one line per turn with PAN/phone/account numbers masked and no conversation id
+- Export prints counts of sft / preference records
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### Z3 — Release gate
+
+**Do**
+
+1. `python -m backend.check`
+
+**Expect**
+
+- Unit tests, offline benchmark (155/155) and rules check all pass: RELEASE GATE: PASSED
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
