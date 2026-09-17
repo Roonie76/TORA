@@ -414,13 +414,14 @@ class FactExtractor:
                         detected_entities.append("rent")
 
             # 4. Food / Groceries
+            # amount-before ("15k on groceries") wins over keyword-before
             food_match = re.search(
-                r"\b(?:food|groceries)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
+                r"(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|thousand|grand|k)\b)?)\s*(?:a\s+month\s+|monthly\s+|per\s+month\s+)?(?:on|for)\s+(?:food|groceries|grocery)\b",
                 c_lower,
             )
             if not food_match:
                 food_match = re.search(
-                    r"(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|thousand|grand|k)\b)?)\s*(?:a\s+month\s+|monthly\s+|per\s+month\s+)?(?:on|for)\s+(?:food|groceries|grocery)\b",
+                    r"\b(?:food|groceries)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                     c_lower,
                 )
             if food_match:

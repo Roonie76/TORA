@@ -23,6 +23,7 @@ _PHRASES: List[Tuple[str, str]] = [
     (r"^\s*(?:main|mai)\b(?=\s+(?:\d|₹|rs\b|har\b|abhi\b|ek\b))", "i"),
     (r"\b(?:tankhwah|tankhwa|tankha|pagaar|pagar)\b", "salary"),
     (r"\b(?:kiraya|kiraaya)\b", "rent"),
+    (r"\bbachat\s+(?:karta|karti|karte)\b", "save"),
     (r"\bbachat\b", "savings"),
     (r"\bkharch[ae]?\b", "expenses"),
     (r"\b(?:lagega|lagegi|dena\s+hoga|bharna\s+hoga)\b", "payable"),
@@ -52,7 +53,11 @@ def normalize_message(text: str) -> str:
         out = rx.sub(repl, out)
     out = _TRAILING_HAI.sub("", out)
     # "rent forget" (Hinglish order) -> "forget my rent"
-    m = re.match(r"^\s*(?:please\s+)?(my\s+.+?)\s+forget\s*[.!]?\s*$", out, re.IGNORECASE)
-    if m:
-        out = f"forget {m.group(1)}"
+    m = re.match(r"^\s*(?:please\s+)?(?:my\s+)?(.+?)\s+forget\s*[.!]?\s*$", out, re.IGNORECASE)
+    if m and len(m.group(1).split()) <= 3:
+        out = f"forget my {m.group(1)}"
+    # "salary how much?" (Hinglish order) -> "how much is my salary?"
+    m = re.match(r"^\s*(?:my\s+)?([a-z ]{3,30}?)\s+how much\s*(\?)?\s*$", out, re.IGNORECASE)
+    if m and not re.search(r"\d", out):
+        out = f"how much is my {m.group(1)}?"
     return out

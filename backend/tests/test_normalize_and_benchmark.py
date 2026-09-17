@@ -80,3 +80,24 @@ def test_benchmark_is_large_and_diverse():
     for required in ("memory", "language", "calculation", "tax", "planning", "safety", "tool_selection", "accounts"):
         assert cats[required] >= 3, f"too few {required} scenarios"
     assert max(len(s["turns"]) for s in scenarios) >= 10, "need at least one long conversation"
+
+
+@pytest.mark.parametrize("msg, intent", [
+    ("salary kitna hai?", Intent.MEMORY_RECALL),
+    ("salary bhool jao", Intent.MEMORY_DELETE),
+    ("meri salary bhool jao", Intent.MEMORY_DELETE),
+])
+def test_hinglish_word_order(msg, intent):
+    from backend.context.extractor import extract_memory_commands
+    cmds = extract_memory_commands(msg)
+    facts = FactExtractor.extract_candidate_facts(msg, FinancialProfile())
+    assert IntentClassifier.classify(msg, None, cmds, facts).intent == intent
+
+
+def test_monthly_saving_habit_is_not_a_savings_balance():
+    assert _profile_after("main 5 hazaar bachat karta hoon").get_fact("savings") is None
+
+
+def test_groceries_with_other_amount_later():
+    p = _profile_after("I spend 15k on groceries and have 2 lakh saved")
+    assert p.get_fact("food").value == 15000 and p.get_fact("savings").value == 200000

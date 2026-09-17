@@ -105,7 +105,7 @@ _CURRENT_INFO = re.compile(r"\b(?:current|currently|latest|today|now|this (?:wee
                            r"rates?|interest rates?|charges?|fees?|circular|notification|announced)\b", re.IGNORECASE)
 _MEMORY_RECALL = re.compile(r"\b(?:what (?:is|was|were|are) my|my (?:previous|original|old|last|current)|"
                             r"what did i (?:say|tell|mention)|remind me|do you remember|what do you know about me|"
-                            r"how much (?:do|did) i (?:earn|make|pay|owe|have)|what'?s my)\b", re.IGNORECASE)
+                            r"how much (?:do|did) i (?:earn|make|pay|owe|have)|how much is my|what'?s my)\b", re.IGNORECASE)
 _MEMORY_FACT_WORDS = re.compile(r"\b(?:salary|income|earn|rent|savings?|emergency fund|balance|debt|loan|emi|card|"
                                 r"investments?|mutual funds?|gold|goal|expenses?|profile|about me)\b", re.IGNORECASE)
 _PLANNING = re.compile(r"\b(?:plan|budget|roadmap|strategy|allocate|allocation|goals?|retire|retirement|"
