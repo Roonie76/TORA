@@ -1,0 +1,30 @@
+FORM NO. 16
+[See rule 31(1)(a)]
+PART A
+Certificate under section 203 of the Income-tax Act, 1961 for tax deducted at source on salary
+Name and address of the Employer: Acme Software Pvt Ltd, Bengaluru
+PAN of the Employee: ABCPK1234Q
+Assessment Year 2026-27
+Period with the Employer From 01-Apr-2025 To 31-Mar-2026
+Summary of amount paid/credited and tax deducted at source thereon
+Total (Rs.) 1250000.00 128960.00 128960.00
+PART B (Annexure)
+Whether opting out of taxation under section 115BAC(1A)? Yes
+1. Gross Salary
+(a) Salary as per provisions contained in section 17(1) 1250000.00
+(b) Value of perquisites under section 17(2) 0.00
+(d) Total 1250000.00
+2. Less: Allowances to the extent exempt under section 10
+(e) House rent allowance under section 10(13A) 120000.00
+(h) Total amount of exemption claimed under section 10 120000.00
+4. Less: Deductions under section 16
+(a) Standard deduction under section 16(ia) 50000.00
+(c) Tax on employment under section 16(iii) 2500.00
+10. Deductions under Chapter VI-A
+(a) Deduction in respect of life insurance premia, contributions to provident fund etc. under section 80C 150000.00
+(d) Deduction in respect of contribution by taxpayer to pension scheme under section 80CCD (1B) 50000.00
+(e) Deduction in respect of health insurance premia under section 80D 25000.00
+12. Total taxable income (9-11) 852500.00
+13. Tax on total income 83000.00
+16. Health and education cess 3320.00
+19. Net tax payable (17-18) 86320.00

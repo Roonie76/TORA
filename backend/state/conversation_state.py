@@ -7,6 +7,7 @@ and returning to an earlier topic ("back to the home loan comparison") resolve
 against real, previously fetched data instead of the model's recollection.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -126,6 +127,29 @@ class ConversationState:
     calculations: List[Dict[str, Any]] = field(default_factory=list)
     last_intent: Optional[str] = None
     last_resolution: Optional[Dict[str, Any]] = None
+    documents: List[Dict[str, Any]] = field(default_factory=list)  # Phase 11 parsed uploads (summaries only)
+
+    # --------------------------------------------------------------- documents
+    MAX_DOCUMENTS = 5
+
+    def add_document(self, doc: Dict[str, Any]) -> None:
+        self.documents = [d for d in self.documents if d.get("id") != doc.get("id")] + [doc]
+        self.documents = self.documents[-self.MAX_DOCUMENTS:]
+
+    def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        return next((d for d in self.documents if d.get("id") == doc_id), None)
+
+    def render_documents(self) -> str:
+        if not self.documents:
+            return ""
+        lines = ["- Documents the user uploaded (parsed automatically; figures may need checking):"]
+        for d in self.documents[-3:]:
+            lines.append(f"  [{d.get('doc_type')}] {d.get('filename')} — status {d.get('status')}, "
+                         f"confidence {d.get('confidence')}")
+            lines.append(f"    Summary: {json.dumps(d.get('summary'), ensure_ascii=False, default=str)[:1500]}")
+            if d.get("warnings"):
+                lines.append(f"    Warnings: {'; '.join(d['warnings'])}")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------ topics
     def active_topic(self) -> Optional[TopicState]:
@@ -308,7 +332,12 @@ class ConversationState:
         return text[:TRUSTED_RENDER_CHARS]
 
     def render_external(self, exclude_turn: Optional[int] = None) -> str:
-        """Previously gathered third-party research for the active topic (untrusted)."""
+        """Uploaded document summaries and earlier research for the active topic (untrusted)."""
+        docs = self.render_documents()
+        research = self._render_research(exclude_turn)
+        return "\n".join(part for part in (docs, research) if part)[:EXTERNAL_RENDER_CHARS + 2000]
+
+    def _render_research(self, exclude_turn: Optional[int] = None) -> str:
         active = self.active_topic()
         if active is None or not active.has_research():
             return ""
@@ -346,6 +375,7 @@ class ConversationState:
             "calculations": list(self.calculations),
             "last_intent": self.last_intent,
             "last_resolution": self.last_resolution,
+            "documents": list(self.documents),
         }
 
     @classmethod
@@ -359,4 +389,5 @@ class ConversationState:
             calculations=list(d.get("calculations") or []),
             last_intent=d.get("last_intent"),
             last_resolution=d.get("last_resolution"),
+            documents=list(d.get("documents") or []),
         )

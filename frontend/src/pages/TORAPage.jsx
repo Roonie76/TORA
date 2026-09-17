@@ -5,6 +5,7 @@ import {
   Copy,
   Check,
   RotateCcw,
+  Paperclip,
 } from "lucide-react";
 import { cn } from "@shared/utils/cn";
 import { getStoredAccessToken } from "../api";
@@ -181,6 +182,8 @@ export default function TORAPage({
 
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   // Persist chat
   useEffect(() => {
@@ -231,6 +234,81 @@ export default function TORAPage({
     ];
     setMessages(reset);
     if (showToast) showToast("Conversation reset", "info");
+  };
+
+  // Phase 11: read a Form 16, salary slip, bank statement or AIS. Facts are saved only after confirmation.
+  const inr = (v) => `₹${Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  const uploadDocument = async (file, password) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (conversationId) form.append("conversation_id", conversationId);
+    if (password) form.append("password", password);
+    const response = await fetch("/api/documents", { method: "POST", headers: toraHeaders(), body: form });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(typeof data.detail === "string" ? data.detail : `Upload failed (${response.status})`);
+      error.status = response.status;
+      throw error;
+    }
+    return data;
+  };
+
+  const handleFile = async (event) => {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = "";
+    if (!file || uploading) return;
+    setUploading(true);
+    setMessages((prev) => [...prev, { id: nextId("usr"), role: "user", content: `📎 ${file.name}`, timestamp: getTimestamp() }]);
+    try {
+      let data;
+      try {
+        data = await uploadDocument(file);
+      } catch (err) {
+        if (err.status === 422 && /password/i.test(err.message)) {
+          const password = window.prompt("This PDF is password-protected. Enter its password:");
+          if (!password) throw err;
+          data = await uploadDocument(file, password);
+        } else {
+          throw err;
+        }
+      }
+      if (data.conversation_id) setConversationId(data.conversation_id);
+      const doc = data.document;
+      const facts = doc.proposed_facts || [];
+      const lines = [
+        `I read your ${doc.doc_type.replace("_", " ")} (${doc.confidence} confidence).`,
+        ...facts.map((f) => `• ${f.label}: ${inr(f.value)}`),
+        ...(doc.warnings || []).map((w) => `Note: ${w}`),
+        facts.length ? "Save these to your memory?" : "You can now ask me about this document.",
+      ];
+      setMessages((prev) => [...prev, {
+        id: nextId("ast"), role: "assistant", content: lines.join("\n"), timestamp: getTimestamp(),
+        doc: facts.length ? { id: doc.id, status: "pending" } : null,
+      }]);
+    } catch (err) {
+      setMessages((prev) => [...prev, {
+        id: nextId("ast-err"), role: "assistant", isError: true, timestamp: getTimestamp(),
+        content: `I couldn't read that file: ${err.message}`,
+      }]);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const resolveDocument = async (msgId, docId, action) => {
+    try {
+      const response = await fetch(`/api/documents/${encodeURIComponent(docId)}/${action}`, {
+        method: "POST",
+        headers: toraHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ conversation_id: conversationId }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, doc: { ...m.doc, status: action } } : m)));
+      if (showToast) showToast(action === "confirm" ? "Saved to TORA's memory" : "Document discarded", "info");
+    } catch (err) {
+      if (showToast) showToast(`Could not update: ${err.message}`, "error");
+    }
   };
 
   const handleSend = async (customText) => {
@@ -429,6 +507,27 @@ export default function TORAPage({
                   ) : (
                     <MessageContent text={msg.content} />
                   )}
+                  {msg.doc && msg.doc.status === "pending" && (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        onClick={() => resolveDocument(msg.id, msg.doc.id, "confirm")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-600 text-white hover:bg-blue-500"
+                      >
+                        Save to memory
+                      </button>
+                      <button
+                        onClick={() => resolveDocument(msg.id, msg.doc.id, "dismiss")}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium border border-slate-400/40 hover:bg-white/5"
+                      >
+                        Don't save
+                      </button>
+                    </div>
+                  )}
+                  {msg.doc && msg.doc.status !== "pending" && (
+                    <p className="mt-2 text-xs opacity-70">
+                      {msg.doc.status === "confirm" ? "Saved to memory." : "Not saved."}
+                    </p>
+                  )}
 
                   <div
                     className={cn(
@@ -487,6 +586,26 @@ export default function TORAPage({
         )}
       >
         <div className="max-w-3xl mx-auto flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.csv,.txt"
+            className="hidden"
+            onChange={handleFile}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading || isTyping}
+            className={cn(
+              "p-3.5 rounded-2xl shrink-0 transition-all flex items-center justify-center border",
+              theme === "dark" ? "border-white/15 text-slate-300 hover:bg-white/5" : "border-slate-200 text-slate-600 hover:bg-slate-50",
+              (uploading || isTyping) && "opacity-50 cursor-not-allowed"
+            )}
+            aria-label="Upload Form 16, salary slip or bank statement"
+            title="Upload Form 16, salary slip or bank statement"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
           <div
             className={cn(
               "flex-1 rounded-2xl border px-4 py-3 flex items-center transition-all focus-within:ring-2 focus-within:ring-blue-500/20",

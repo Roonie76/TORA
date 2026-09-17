@@ -1,0 +1,14 @@
+Acme Software Pvt Ltd
+Payslip for the month of August 2026
+Employee: R. Kumar   PAN: ABCPK1234Q   Bank A/c: 123456789012
+Earnings                         Amount
+Basic Salary                     50,000.00
+House Rent Allowance             20,000.00
+Special Allowance                30,000.00
+Gross Earnings                   1,00,000.00
+Deductions
+Provident Fund                   6,000.00
+Professional Tax                 200.00
+Income Tax                       9,800.00
+Total Deductions                 16,000.00
+Net Pay                          84,000.00

@@ -3,7 +3,7 @@ import time
 import threading
 from collections import defaultdict, deque
 from typing import Optional, List, Dict, Any, Deque
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
@@ -39,6 +39,7 @@ from .auth import (
 from .planner import Planner
 from .agent import ToraAgent
 from .state import SessionStore, is_valid_conversation_id
+from .documents import DocumentError, MAX_BYTES as MAX_DOCUMENT_BYTES, parse_document
 from .observability import TelemetryHub, conversation_ref, start_trace
 
 load_dotenv()
@@ -534,6 +535,95 @@ async def delete_account_data(http_request: Request):
     async with session_store.lock_for(f"user:{identity.user_id}"):
         removed = session_store.delete_user_data(identity.user_id)
     return {"deleted": True, "conversations_deleted": removed}
+
+
+# ── Phase 11: documents ─────────────────────────────────────────────────────
+
+class ConfirmFactsRequest(BaseModel):
+    conversation_id: str = Field(..., max_length=64)
+    facts: Optional[List[str]] = Field(default=None, max_length=20,
+                                       description="Names of the proposed facts to save; all when omitted.")
+
+
+def _public_document(doc: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: doc.get(k) for k in ("id", "doc_type", "filename", "summary", "proposed_facts", "warnings",
+                                    "confidence", "uploaded_at", "status")}
+
+
+@app.post("/api/documents")
+async def upload_document(
+    http_request: Request,
+    file: UploadFile = File(...),
+    conversation_id: Optional[str] = Form(default=None),
+    password: Optional[str] = Form(default=None, max_length=128),
+    doc_type: Optional[str] = Form(default=None, pattern=r"^(form16|salary_slip|bank_statement|ais)$"),
+):
+    """Read a Form 16, salary slip, bank statement or AIS. Nothing is remembered until confirmed."""
+    identity = await resolve_identity(http_request)
+    client_key = f"user:{identity.user_id}" if identity else (http_request.client.host if http_request.client else "unknown")
+    if not rate_limiter.allow(client_key):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Too many requests. Please wait a moment and try again.",
+                            headers={"Retry-After": str(int(rate_limiter.window))})
+    data = await file.read(MAX_DOCUMENT_BYTES + 1)
+    if len(data) > MAX_DOCUMENT_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="The file is larger than 5 MB.")
+    try:
+        parsed = parse_document(data, file.filename or "document", password=password or None, doc_type=doc_type)
+    except DocumentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    finally:
+        del data
+    if conversation_id is None:
+        session = session_store.create(owner_id=_user_id(identity))
+    else:
+        session = _load_session_or_404(conversation_id, identity)
+    lock_key = f"user:{session.owner_id}" if session.owner_id else session.id
+    async with session_store.lock_for(lock_key):
+        session = _load_session_or_404(session.id, identity)
+        session.state.add_document(parsed.to_dict())
+        session_store.save(session)
+    return {"conversation_id": session.id, "document": _public_document(parsed.to_dict())}
+
+
+@app.post("/api/documents/{doc_id}/confirm")
+async def confirm_document_facts(doc_id: str, body: ConfirmFactsRequest, http_request: Request):
+    """Save the chosen proposed facts from a parsed document into memory."""
+    identity = await resolve_identity(http_request)
+    session = _load_session_or_404(body.conversation_id, identity)
+    lock_key = f"user:{session.owner_id}" if session.owner_id else session.id
+    async with session_store.lock_for(lock_key):
+        session = _load_session_or_404(body.conversation_id, identity)
+        if session.owner_id:
+            session.profile = session_store.get_user_profile(session.owner_id) or session.profile
+        doc = session.state.get_document(doc_id)
+        if doc is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+        wanted = set(body.facts) if body.facts is not None else None
+        chosen = [dict(f) for f in doc.get("proposed_facts", []) if wanted is None or f["name"] in wanted]
+        for f in chosen:
+            f["source"] = "document"
+            f["notes"] = f.get("notes") or f"{f.get('label')} ({doc.get('doc_type')})"
+        applied = FactManager.apply_candidates(session.profile, chosen, turn=session.state.turn_count)
+        doc["status"] = "confirmed"
+        session_store.save(session)
+    return {"saved": [f.name for f in applied], "memory_summary": session.profile.to_context_string()}
+
+
+@app.post("/api/documents/{doc_id}/dismiss")
+async def dismiss_document(doc_id: str, body: ConfirmFactsRequest, http_request: Request):
+    """Forget a parsed document's summary."""
+    identity = await resolve_identity(http_request)
+    session = _load_session_or_404(body.conversation_id, identity)
+    lock_key = f"user:{session.owner_id}" if session.owner_id else session.id
+    async with session_store.lock_for(lock_key):
+        session = _load_session_or_404(body.conversation_id, identity)
+        before = len(session.state.documents)
+        session.state.documents = [d for d in session.state.documents if d.get("id") != doc_id]
+        if len(session.state.documents) == before:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+        session_store.save(session)
+    return {"dismissed": True}
 
 
 @app.get("/api/conversations/{conversation_id}")
