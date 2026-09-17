@@ -109,6 +109,8 @@ _MEMORY_RECALL = re.compile(r"\b(?:what (?:is|was|were|are) my|my (?:previous|or
 _MEMORY_FACT_WORDS = re.compile(r"\b(?:salary|income|earn|rent|savings?|emergency fund|balance|debt|loan|emi|card|"
                                 r"investments?|mutual funds?|gold|goal|expenses?|profile|about me)\b", re.IGNORECASE)
 _PLANNING = re.compile(r"\b(?:plan|budget|roadmap|strategy|allocate|allocation|goals?|retire|retirement|"
+                       r"debt[- ]free|out\s+of\s+debt|drowning|can'?t\s+(?:pay|manage|afford)|consolidat\w*|"
+                       r"balance\s+transfer|minimum\s+due|too\s+many\s+(?:loans|emis|debts)|"
                        r"emergency fund|how should i|help me (?:save|invest|pay)|down ?payment|"
                        r"in \d+(?:\.\d+)?\s*(?:years?|yrs?))\b", re.IGNORECASE)
 # Statements carrying numbers that are really calculation / planning requests

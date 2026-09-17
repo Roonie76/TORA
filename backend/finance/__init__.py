@@ -5,5 +5,6 @@ from .engine import (
     run_operation,
     inr,
 )
+from . import debt  # noqa: E402,F401  (registers the Phase 8 debt-rescue operations)
 
 __all__ = ["FinanceInputError", "OPERATIONS", "OPERATION_PARAMS", "run_operation", "inr"]

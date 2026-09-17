@@ -4795,6 +4795,277 @@
           }
         }
       ]
+    },
+    {
+      "id": "debt-rescue-memory",
+      "category": "debt",
+      "description": "Facts over several turns, then a rescue plan",
+      "turns": [
+        {
+          "user": "My credit card balance is 1.55 lakh at 42% and the minimum due is 7750",
+          "expect": {
+            "profile": {
+              "credit_card_debt": 155000.0
+            }
+          }
+        },
+        {
+          "user": "I also have a personal loan of 3 lakh with EMI 10k",
+          "expect": {
+            "profile": {
+              "personal_loan_balance": 300000.0,
+              "personal_loan_emi": 10000.0
+            }
+          }
+        },
+        {
+          "user": "I earn 70k and my essential expenses are 35k. I can't manage, how do I get out of debt?",
+          "plan": {
+            "thought": "debt",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "debt_rescue_plan",
+                  "params": {
+                    "debts": [
+                      {
+                        "name": "credit card",
+                        "balance": 155000,
+                        "apr": 42,
+                        "min_payment": 7750
+                      },
+                      {
+                        "name": "personal loan",
+                        "balance": 300000,
+                        "apr": 14,
+                        "min_payment": 10000
+                      }
+                    ],
+                    "monthly_income": 70000,
+                    "essential_expenses": 35000
+                  }
+                }
+              }
+            ]
+          },
+          "answer": "You can be debt-free in 15 months with about ₹58,812 interest if ₹35,000 a month goes to debts. Clear the credit card first.",
+          "expect": {
+            "intent": [
+              "planning"
+            ],
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.status": "workable",
+              "finance_calc.plan.months_to_debt_free": 15
+            },
+            "grounding_action": "none",
+            "system_contains": [
+              "People Under Debt Stress"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "debt-shortfall",
+      "category": "debt",
+      "description": "Income can't cover minimums",
+      "turns": [
+        {
+          "user": "I earn 45k, essentials are 30k, my card needs 7750 minimum and the personal loan EMI is 10k. What do I do?",
+          "plan": {
+            "thought": "debt",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "debt_rescue_plan",
+                  "params": {
+                    "debts": [
+                      {
+                        "name": "credit card",
+                        "balance": 155000,
+                        "apr": 42,
+                        "min_payment": 7750
+                      },
+                      {
+                        "name": "personal loan",
+                        "balance": 300000,
+                        "apr": 14,
+                        "min_payment": 10000
+                      }
+                    ],
+                    "monthly_income": 45000,
+                    "essential_expenses": 30000
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.status": "shortfall",
+              "finance_calc.monthly_shortfall": 2750
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "debt-invented-months",
+      "category": "debt",
+      "description": "A made-up payoff time is rewritten",
+      "turns": [
+        {
+          "user": "How fast can I clear a 1.55 lakh card at 42% with 7750 minimum and a 3 lakh loan at 14% with 10k EMI? I earn 70k, essentials 35k.",
+          "plan": {
+            "thought": "debt",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "debt_rescue_plan",
+                  "params": {
+                    "debts": [
+                      {
+                        "name": "credit card",
+                        "balance": 155000,
+                        "apr": 42,
+                        "min_payment": 7750
+                      },
+                      {
+                        "name": "personal loan",
+                        "balance": 300000,
+                        "apr": 14,
+                        "min_payment": 10000
+                      }
+                    ],
+                    "monthly_income": 70000,
+                    "essential_expenses": 35000
+                  }
+                }
+              }
+            ]
+          },
+          "answers": [
+            "You will be debt-free in 9 months and pay ₹47,300 in interest.",
+            "About 15 months, with ₹58,812 interest."
+          ],
+          "expect": {
+            "grounding_action": "regenerated"
+          }
+        }
+      ]
+    },
+    {
+      "id": "debt-min-trap",
+      "category": "debt",
+      "description": "Minimum-due trap",
+      "turns": [
+        {
+          "user": "What happens if I only pay the minimum due on my 1.55 lakh card at 42%?",
+          "plan": {
+            "thought": "debt",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "minimum_due_trap",
+                  "params": {
+                    "balance": 155000,
+                    "apr": 42
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_ok": {
+              "finance_calc": true
+            },
+            "tool_output": {
+              "finance_calc.first_minimum_due": 7750
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "debt-consolidation",
+      "category": "debt",
+      "description": "Consolidation check with fees",
+      "turns": [
+        {
+          "user": "Should I take a 13% loan for 3 years with 2% fee to close my card (1.55 lakh at 42%, min 7750) and personal loan (3 lakh at 14%, EMI 10k)?",
+          "plan": {
+            "thought": "debt",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "consolidation_check",
+                  "params": {
+                    "debts": [
+                      {
+                        "name": "credit card",
+                        "balance": 155000,
+                        "apr": 42,
+                        "min_payment": 7750
+                      },
+                      {
+                        "name": "personal loan",
+                        "balance": 300000,
+                        "apr": 14,
+                        "min_payment": 10000
+                      }
+                    ],
+                    "new_rate": 13,
+                    "tenure_months": 36,
+                    "processing_fee_percent": 2
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.verdict": "consolidate",
+              "finance_calc.fees": 9100
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "debt-missing-rate",
+      "category": "debt",
+      "description": "Unknown rate: no tool, ask",
+      "turns": [
+        {
+          "user": "I have 4 loans and I'm drowning, help me get out of debt",
+          "expect": {
+            "tools": [],
+            "planner_called": true
+          }
+        }
+      ]
     }
   ]
 }
