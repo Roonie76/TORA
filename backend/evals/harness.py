@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..agent.agent import ToraAgent
+from ..auth import Identity, reset_current_identity, set_current_identity
 from ..context.llm_extractor import EXTRACTOR_PREFIX
 from ..context import ConversationContext, FinancialProfile, MessageRole
 from ..llm.base import LLMProvider, LLMResponse
@@ -37,6 +38,7 @@ from ..tools import (
     CalculatorTool,
     FinanceCalcTool,
     ResearchTool,
+    SpendsyDataTool,
     TaxCalcTool,
     ToolExecutor,
     ToolRegistry,
@@ -169,6 +171,8 @@ class EvalHarness:
         registry.register(CalculatorTool())
         registry.register(FinanceCalcTool())
         registry.register(TaxCalcTool())
+        # Spendsy records always come from fixtures (there is no live Spendsy service in evals).
+        registry.register(FixtureTool(SpendsyDataTool(), self))
         web_tools = [WebSearchTool(), WebFetchTool(), ResearchTool(provider=_NoopResearchProvider())]
         for tool in web_tools:
             registry.register(tool if self.real_web and self.mode == "live" else FixtureTool(tool, self))
@@ -191,6 +195,14 @@ class EvalHarness:
                 os.environ["TORA_GROUNDING_MODE"] = previous_mode
 
     async def _run_scenario_inner(self, scenario: Dict[str, Any]) -> ScenarioResult:
+        identity = Identity(user_id="eval-user", token="eval-token") if scenario.get("signed_in") else None
+        token = set_current_identity(identity)
+        try:
+            return await self._run_turns(scenario)
+        finally:
+            reset_current_identity(token)
+
+    async def _run_turns(self, scenario: Dict[str, Any]) -> ScenarioResult:
         registry = self._registry()
         agent = ToraAgent(
             llm_provider=self.provider,

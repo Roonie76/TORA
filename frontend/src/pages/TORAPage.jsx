@@ -7,6 +7,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { cn } from "@shared/utils/cn";
+import { getStoredAccessToken } from "../api";
 
 let msgId = 0;
 const nextId = (prefix = "msg") => {
@@ -18,6 +19,17 @@ const getTimestamp = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 const CONVERSATION_KEY = "spendsy_tora_conversation_id";
+
+// Phase 6A: send the Spendsy sign-in token so TORA can keep account memory
+// and read the user's own transactions. Without a token TORA works anonymously.
+function toraHeaders(extra = {}) {
+  const headers = { ...extra };
+  const token = getStoredAccessToken();
+  if (token) {
+    headers.Authorization = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+  }
+  return headers;
+}
 
 const SUGGESTIONS = [
 
@@ -203,7 +215,10 @@ export default function TORAPage({
   const handleClear = () => {
     if (conversationId) {
       // Delete the server-side conversation and everything TORA remembered in it
-      fetch(`/api/conversations/${encodeURIComponent(conversationId)}`, { method: "DELETE" }).catch(() => {});
+      fetch(`/api/conversations/${encodeURIComponent(conversationId)}`, {
+        method: "DELETE",
+        headers: toraHeaders(),
+      }).catch(() => {});
       setConversationId(null);
     }
     const reset = [
@@ -239,7 +254,7 @@ export default function TORAPage({
       const postTurn = (id) =>
         fetch("/api/chat", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: toraHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify(id ? { conversation_id: id, message: trimmed } : { message: trimmed }),
         });
 
@@ -286,9 +301,11 @@ export default function TORAPage({
         id: nextId("ast-err"),
         role: "assistant",
         content:
-          !err.status || err.status === 503
-            ? `Unable to reach TORA: ${err.message}\n\nMake sure FastAPI is running on port 8000 and Ollama is active.`
-            : `TORA couldn't answer (${err.status}): ${err.message}`,
+          err.status === 401
+            ? `${err.message}\n\nSign in to Spendsy again to keep chatting with TORA.`
+            : !err.status || err.status === 503
+              ? `Unable to reach TORA: ${err.message}\n\nMake sure FastAPI is running on port 8000 and Ollama is active.`
+              : `TORA couldn't answer (${err.status}): ${err.message}`,
         timestamp: getTimestamp(),
         isError: true,
       };

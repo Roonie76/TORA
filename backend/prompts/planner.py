@@ -2,6 +2,11 @@ import json
 from typing import List, Dict, Any
 
 
+_SPENDSY_RULE = (
+    "8b. Questions about what the user ACTUALLY earned or spent according to their Spendsy records (e.g., 'How much did I spend on food last month?', 'Where does my money go?', 'Show my recent transactions', 'What was my spending this month?') REQUIRE the 'spendsy_data' tool if registered: operation 'spending_summary' (with 'months' and optional 'category') or 'recent_transactions'. Facts the user merely stated in chat are in Known User Facts and do not need this tool.\n"
+)
+
+
 def get_planner_system_prompt(tool_schemas: List[Dict[str, Any]], known_facts: str = "") -> str:
     """
     Generate the system prompt for the Tool Planner.
@@ -26,7 +31,8 @@ def get_planner_system_prompt(tool_schemas: List[Dict[str, Any]], known_facts: s
         "7. Fetching or reading content from a specific public webpage URL (e.g., 'Read this article at https://...', 'What does https://... say?') REQUIRES the 'web_fetch' tool if registered.\n"
         "5c. Indian income-tax computations (tax payable, regime comparison, effect of deductions, capital-gains tax) REQUIRE the 'tax_calc' tool if registered. Pass ANNUAL amounts (convert monthly salary x 12). Do not use 'research' for current slab rates — 'tax_calc' already contains them.\n"
         "8. Comparing current rates, fees or charges ACROSS banks/lenders/products, or verifying an official figure against authoritative sources (e.g., 'Compare SBI, HDFC and ICICI home loan rates', 'Is 8.5% the official SBI rate?') REQUIRES the 'research' tool if registered. Use 'web_search' for a single quick lookup.\n"
-        "9. Ensure the tool arguments strictly match the tool's JSON schema (e.g. for 'calculator', provide 'expression'; for 'web_search' and 'research', provide 'query'; for 'web_fetch', provide 'url').\n"
+        + (_SPENDSY_RULE if any(t.get("function", {}).get("name") == "spendsy_data" for t in tool_schemas) else "")
+        + "9. Ensure the tool arguments strictly match the tool's JSON schema (e.g. for 'calculator', provide 'expression'; for 'web_search' and 'research', provide 'query'; for 'web_fetch', provide 'url').\n"
         "10. You can specify at most 3 sequential steps ('MAX_PLAN_STEPS = 3').\n\n"
         + (f"## Known User Facts (from earlier in this conversation)\n{known_facts}\n\n" if known_facts else "")
         + "## Output Format (JSON Only)\n"

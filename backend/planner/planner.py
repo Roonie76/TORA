@@ -100,6 +100,16 @@ class Planner:
 
         return None
 
+    def _usable_tools(self) -> List[Any]:
+        """Tools this request may use: account tools are hidden from anonymous users (Phase 6B)."""
+        from ..auth import current_identity
+
+        signed_in = current_identity() is not None
+        return [
+            t for t in self.tool_registry.list_tools()
+            if signed_in or not getattr(getattr(t, "metadata", None), "requires_auth", False)
+        ]
+
     def _plan_schema(self) -> Dict[str, Any]:
         """JSON schema passed to providers that support constrained decoding (Ollama `format`)."""
         return {
@@ -113,7 +123,7 @@ class Planner:
                     "items": {
                         "type": "object",
                         "properties": {
-                            "tool_name": {"type": "string", "enum": self.tool_registry.list_names()},
+                            "tool_name": {"type": "string", "enum": [t.name for t in self._usable_tools()]},
                             "arguments": {"type": "object"},
                         },
                         "required": ["tool_name", "arguments"],
@@ -212,7 +222,7 @@ class Planner:
             clean_name = step.tool_name.strip() if step.tool_name else ""
             
             # 1. Check if tool exists in registry
-            if not self.tool_registry.has(clean_name):
+            if clean_name not in {t.name for t in self._usable_tools()}:
                 return ToolPlan(
                     requires_tools=False,
                     steps=[],
@@ -274,7 +284,7 @@ class Planner:
             return ToolPlan(requires_tools=False, steps=[], thought="No tools available in ToolRegistry.")
 
         # Build dynamic planner prompt with current tool schemas
-        tool_schemas = self.tool_registry.get_schemas()
+        tool_schemas = [t.get_schema() for t in self._usable_tools()]
         planner_system_prompt = get_planner_system_prompt(tool_schemas, known_facts=known_facts)
 
         messages: List[Dict[str, str]] = [

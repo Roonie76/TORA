@@ -77,6 +77,6 @@ def test_benchmark_is_large_and_diverse():
     ids = [s["id"] for s in scenarios]
     assert len(ids) == len(set(ids)), "scenario ids must be unique"
     cats = Counter(s["category"] for s in scenarios)
-    for required in ("memory", "language", "calculation", "tax", "planning", "safety", "tool_selection"):
+    for required in ("memory", "language", "calculation", "tax", "planning", "safety", "tool_selection", "accounts"):
         assert cats[required] >= 3, f"too few {required} scenarios"
     assert max(len(s["turns"]) for s in scenarios) >= 10, "need at least one long conversation"

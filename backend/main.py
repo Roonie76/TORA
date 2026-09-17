@@ -22,7 +22,20 @@ from .context import (
     FactExtractor,
     FactManager,
 )
-from .tools import ToolRegistry, CalculatorTool, WebSearchTool, WebFetchTool, ResearchTool, FinanceCalcTool, TaxCalcTool, ToolExecutor
+from .tools import (
+    ToolRegistry, CalculatorTool, WebSearchTool, WebFetchTool, ResearchTool, FinanceCalcTool, TaxCalcTool,
+    SpendsyDataTool, ToolExecutor,
+)
+from .auth import (
+    AuthError,
+    AuthUnavailableError,
+    GatewayAuthVerifier,
+    Identity,
+    auth_mode,
+    extract_token,
+    reset_current_identity,
+    set_current_identity,
+)
 from .planner import Planner
 from .agent import ToraAgent
 from .state import SessionStore, is_valid_conversation_id
@@ -102,6 +115,11 @@ tool_registry.register(WebFetchTool())
 tool_registry.register(ResearchTool())
 tool_registry.register(FinanceCalcTool())
 tool_registry.register(TaxCalcTool())
+# Only offered to the planner for signed-in users (see Planner._usable_tools).
+tool_registry.register(SpendsyDataTool())
+
+# Phase 6A: identity comes from the Spendsy auth service (TORA_AUTH_MODE / TORA_AUTH_URL).
+auth_verifier = GatewayAuthVerifier()
 
 tool_executor = ToolExecutor(registry=tool_registry, default_timeout_seconds=TOOL_TIMEOUT_SECONDS)
 llm_provider = OllamaProvider()
@@ -119,15 +137,45 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS: explicit origin allow-list (TORA_CORS_ORIGINS). The chat API uses no cookies,
-# so credentials are not allowed; the Vite dev proxy makes browser calls same-origin.
+# CORS: explicit origin allow-list (TORA_CORS_ORIGINS). Browsers send the Spendsy token as an
+# Authorization header; cookies are only used when the Vite dev proxy makes calls same-origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+
+async def resolve_identity(http_request: Request, required: Optional[bool] = None) -> Optional[Identity]:
+    """
+    Map the request's Spendsy token to an Identity.
+    off: always anonymous. optional: anonymous allowed, but a supplied token must be valid.
+    required: a valid token is mandatory.
+    """
+    mode = auth_mode()
+    if mode == "off":
+        return None
+    must = (mode == "required") if required is None else required
+    token = extract_token(http_request.headers, http_request.cookies)
+    if not token:
+        if must:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Please sign in to use TORA.",
+                                headers={"WWW-Authenticate": "Bearer"})
+        return None
+    try:
+        return await auth_verifier.verify(token)
+    except AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc),
+                            headers={"WWW-Authenticate": "Bearer"})
+    except AuthUnavailableError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
+
+
+def _user_id(identity: Optional[Identity]) -> Optional[str]:
+    return identity.user_id if identity is not None else None
 
 
 class MessageItem(BaseModel):
@@ -179,8 +227,11 @@ async def chat(request: ChatRequest, http_request: Request):
         mode="stateless" if (request.messages is not None and request.conversation_id is None) else "stateful",
         conversation_ref=conversation_ref(request.conversation_id),
     )
+    ctx_token = None
     try:
-        result = await _chat(request, http_request)
+        identity = await resolve_identity(http_request)
+        ctx_token = set_current_identity(identity)
+        result = await _chat(request, http_request, identity)
     except HTTPException as exc:
         status_label = "rate_limited" if exc.status_code == 429 else ("client_error" if exc.status_code < 500 else "error")
         telemetry.finish(trace, status=status_label, http_status=exc.status_code,
@@ -189,22 +240,28 @@ async def chat(request: ChatRequest, http_request: Request):
     except Exception as exc:
         telemetry.finish(trace, status="error", http_status=500, error_type=type(exc).__name__)
         raise
+    finally:
+        if ctx_token is not None:
+            reset_current_identity(ctx_token)
     if result.conversation_id and trace.conversation_ref is None:
         trace.conversation_ref = conversation_ref(result.conversation_id)
     telemetry.finish(trace, status="ok", http_status=200)
     return result
 
 
-async def _chat(request: ChatRequest, http_request: Request):
+async def _chat(request: ChatRequest, http_request: Request, identity: Optional[Identity] = None):
     """
     Core Chat Endpoint:
     Validates request -> Builds Context -> ToraAgent -> LLMProvider -> Response
     """
     client_key = http_request.client.host if http_request.client else "unknown"
+    if identity is not None:
+        client_key = f"user:{identity.user_id}"
     if not rate_limiter.allow(client_key):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please wait a moment and try again.",
+            headers={"Retry-After": str(int(rate_limiter.window))},
         )
     user_prompt: Optional[str] = request.message
     context: Optional[ConversationContext] = None
@@ -269,7 +326,7 @@ async def _chat(request: ChatRequest, http_request: Request):
     try:
         # Stateful path: the server owns history, memory and conversation state.
         if request.conversation_id is not None or request.messages is None:
-            return await _run_stateful_turn(request, user_prompt.strip())
+            return await _run_stateful_turn(request, user_prompt.strip(), identity)
 
         # Legacy stateless path (client supplies history): memory is rebuilt per request.
         financial_profile = FinancialProfile()
@@ -338,29 +395,37 @@ def _intent_value(agent_response) -> Optional[str]:
     return intent.intent.value if intent is not None else None
 
 
-def _load_session_or_404(conversation_id: str):
+def _load_session_or_404(conversation_id: str, identity: Optional[Identity] = None):
+    """Unknown ids and other users' conversations look identical (404) so ids can't be probed."""
     if not is_valid_conversation_id(conversation_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
     session = session_store.get(conversation_id)
-    if session is None:
+    if session is None or not session.can_access(_user_id(identity)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
     return session
 
 
-async def _run_stateful_turn(request: ChatRequest, prompt: str) -> ChatResponse:
+async def _run_stateful_turn(request: ChatRequest, prompt: str, identity: Optional[Identity] = None) -> ChatResponse:
     """
     One turn of a server-side conversation. History, memory and topic state come from
     the store; client-supplied `messages` are ignored so earlier turns cannot be forged.
     Nothing is persisted unless the turn succeeds.
     """
+    owner = _user_id(identity)
     if request.conversation_id is None:
-        session = session_store.create()
+        session = session_store.create(owner_id=owner)
     else:
-        session = _load_session_or_404(request.conversation_id)
+        session = _load_session_or_404(request.conversation_id, identity)
 
-    async with session_store.lock_for(session.id):
+    lock_key = f"user:{session.owner_id}" if session.owner_id else session.id
+    async with session_store.lock_for(lock_key):
         if request.conversation_id is not None:
-            session = _load_session_or_404(session.id)  # reload under the lock
+            session = _load_session_or_404(session.id, identity)  # reload under the lock
+        if session.owner_id:
+            # Account memory is shared by all of the user's conversations; use the latest copy.
+            saved = session_store.get_user_profile(session.owner_id)
+            if saved is not None:
+                session.profile = saved
         history = session.history()
         context = (
             ConversationContext.from_list(history, allowed_roles=MessageRole.valid_client_roles())
@@ -411,10 +476,72 @@ async def traces(limit: int = 50):
     return {"traces": telemetry.recent(limit)}
 
 
+@app.get("/api/me")
+async def me(http_request: Request):
+    """Who TORA thinks is calling, and whether account features are on."""
+    identity = await resolve_identity(http_request, required=False)
+    return {
+        "auth_mode": auth_mode(),
+        "signed_in": identity is not None,
+        "user_id": _user_id(identity),
+        "username": identity.username if identity else None,
+        "features": {
+            "account_memory": identity is not None,
+            "spendsy_data": identity is not None,
+        },
+    }
+
+
+async def _require_user(http_request: Request) -> Identity:
+    if auth_mode() == "off":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Accounts are not enabled.")
+    identity = await resolve_identity(http_request, required=True)
+    assert identity is not None
+    return identity
+
+
+@app.get("/api/conversations")
+async def list_conversations(http_request: Request, limit: int = 50):
+    """The signed-in user's conversations, newest first."""
+    identity = await _require_user(http_request)
+    return {"conversations": session_store.list_for_owner(identity.user_id, limit=limit)}
+
+
+@app.get("/api/me/memory")
+async def get_account_memory(http_request: Request):
+    """Financial facts TORA remembers for this account (shared by all its conversations)."""
+    identity = await _require_user(http_request)
+    profile = session_store.get_user_profile(identity.user_id) or FinancialProfile()
+    return {"memory": profile.to_dict(), "memory_summary": profile.to_context_string()}
+
+
+@app.delete("/api/me/memory")
+async def clear_account_memory(http_request: Request):
+    """Forget every remembered financial fact for this account (transcripts are kept)."""
+    identity = await _require_user(http_request)
+    async with session_store.lock_for(f"user:{identity.user_id}"):
+        profile = session_store.get_user_profile(identity.user_id) or FinancialProfile()
+        profile.clear()
+        session_store.save_user_profile(identity.user_id, profile)
+    return {"cleared": True}
+
+
+@app.delete("/api/me/data")
+async def delete_account_data(http_request: Request):
+    """Delete all of this account's TORA conversations and remembered facts."""
+    identity = await _require_user(http_request)
+    async with session_store.lock_for(f"user:{identity.user_id}"):
+        removed = session_store.delete_user_data(identity.user_id)
+    return {"deleted": True, "conversations_deleted": removed}
+
+
 @app.get("/api/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
+async def get_conversation(conversation_id: str, http_request: Request):
     """Transcript, remembered facts and topic state for one conversation."""
-    session = _load_session_or_404(conversation_id)
+    identity = await resolve_identity(http_request)
+    session = _load_session_or_404(conversation_id, identity)
+    if session.owner_id:
+        session.profile = session_store.get_user_profile(session.owner_id) or session.profile
     return {
         "conversation_id": session.id,
         "created_at": session.created_at,
@@ -423,23 +550,31 @@ async def get_conversation(conversation_id: str):
         "memory": session.profile.to_dict(),
         "memory_summary": session.profile.to_context_string(),
         "state": session.state.to_dict(),
+        "owned": session.owner_id is not None,
     }
 
 
 @app.delete("/api/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str):
-    """Delete a conversation and everything remembered in it."""
-    if not is_valid_conversation_id(conversation_id) or not session_store.delete(conversation_id):
+async def delete_conversation(conversation_id: str, http_request: Request):
+    """Delete a conversation (for signed-in users, account memory is kept; see /api/me/memory)."""
+    identity = await resolve_identity(http_request)
+    _load_session_or_404(conversation_id, identity)
+    if not session_store.delete(conversation_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found.")
     return {"deleted": True}
 
 
 @app.delete("/api/conversations/{conversation_id}/memory")
-async def clear_conversation_memory(conversation_id: str):
-    """Forget all remembered financial facts but keep the transcript."""
-    session = _load_session_or_404(conversation_id)
-    async with session_store.lock_for(session.id):
-        session = _load_session_or_404(conversation_id)
+async def clear_conversation_memory(conversation_id: str, http_request: Request):
+    """Forget all remembered financial facts but keep the transcript.
+    For an account-owned conversation this clears the account memory."""
+    identity = await resolve_identity(http_request)
+    session = _load_session_or_404(conversation_id, identity)
+    lock_key = f"user:{session.owner_id}" if session.owner_id else session.id
+    async with session_store.lock_for(lock_key):
+        session = _load_session_or_404(conversation_id, identity)
+        if session.owner_id:
+            session.profile = session_store.get_user_profile(session.owner_id) or session.profile
         session.profile.clear(turn=session.state.turn_count)
         session_store.save(session)
     return {"cleared": True}

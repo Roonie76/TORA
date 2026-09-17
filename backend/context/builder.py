@@ -20,6 +20,7 @@ MAX_SUMMARY_TOKENS = 600
 EXTERNAL_DATA_TAG = "external_data"
 EXTERNAL_TOOL_NAMES = frozenset({
     "web_search", "web_fetch", "research", "web_verify", "research_synthesis", "multi_source_research",
+    "spendsy_data",  # descriptions / categories can come from parsed bank statements
 })
 _TAG_PATTERN = re.compile(r"<\s*(/?)\s*" + EXTERNAL_DATA_TAG, re.IGNORECASE)
 
@@ -216,6 +217,32 @@ class ContextBuilder:
                 lines.append(f"  Yearly schedule (first years): {out['yearly_schedule'][:3]}")
             if out.get("assumptions"):
                 lines.append(f"  Assumptions: {' '.join(out['assumptions'])}")
+            return "\n".join(lines)
+
+        # The user's own Spendsy records (Phase 6B)
+        if res.tool_name == "spendsy_data" and isinstance(res.output, dict):
+            out = res.output
+            if out.get("operation") == "recent_transactions":
+                lines = [f"- Spendsy records: {out.get('count', 0)} recent transactions since {out.get('since')}"]
+                for t in out.get("transactions", []):
+                    lines.append(f"  {t['date']} {t['kind']} Rs {t['amount']:,.2f} [{t['category']}] {t['description']}")
+                return "\n".join(lines)
+            period = out.get("period", {})
+            lines = [
+                f"- Spendsy records {period.get('from_month')} to {period.get('to_month')} "
+                f"({period.get('months')} months{', current month partial' if period.get('current_month_partial') else ''})"
+                + (f", filtered to '{out['filter_category']}'" if out.get("filter_category") else ""),
+                f"  total_income={out.get('total_income')}, total_expenses={out.get('total_expenses')}, net={out.get('net')}, "
+                f"average_monthly_income={out.get('average_monthly_income')}, "
+                f"average_monthly_expenses={out.get('average_monthly_expenses')}, savings_rate_pct={out.get('savings_rate_pct')}",
+            ]
+            for m in out.get("by_month", []):
+                lines.append(f"  {m['month']}: income={m['income']}, expenses={m['expenses']}, net={m['net']}")
+            for c in out.get("top_categories", []) or []:
+                lines.append(f"  category {c['category']}: total={c['total']}, monthly_average={c['monthly_average']}, "
+                             f"share_pct={c['share_pct']}")
+            if out.get("truncated"):
+                lines.append("  Note: only the most recent records were read; older totals may be incomplete.")
             return "\n".join(lines)
 
         # Default rendering for non-search tools (calculator, etc.)

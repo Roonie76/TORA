@@ -55,8 +55,11 @@ from .web_fetch import (
 from .research_tool import ResearchTool, ResearchInput
 from .finance_tool import FinanceCalcTool, FinanceCalcInput
 from .tax_tool import TaxCalcTool, TaxCalcInput
+from .spendsy_tool import SpendsyDataTool, SpendsyDataInput
 
 __all__ = [
+    "SpendsyDataTool",
+    "SpendsyDataInput",
     "TaxCalcTool",
     "TaxCalcInput",
     "FinanceCalcTool",

@@ -50,6 +50,18 @@ class ConversationSession:
     state: ConversationState = field(default_factory=ConversationState)
     created_at: str = field(default_factory=_now_iso)
     updated_at: str = field(default_factory=_now_iso)
+    owner_id: Optional[str] = None  # Spendsy user id (Phase 6A); None = anonymous
+
+    def can_access(self, user_id: Optional[str]) -> bool:
+        """Owned conversations are private to their owner; anonymous ones are id-addressed."""
+        return self.owner_id is None or self.owner_id == user_id
+
+    def title(self) -> str:
+        for t in self.turns:
+            if t.get("role") == "user":
+                text = " ".join(str(t.get("content", "")).split())
+                return text[:60] + ("…" if len(text) > 60 else "")
+        return "New conversation"
 
     def history(self) -> List[Dict[str, str]]:
         return [{"role": t["role"], "content": t["content"]} for t in self.turns]
@@ -73,6 +85,7 @@ class ConversationSession:
             "state": self.state.to_dict(),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "owner_id": self.owner_id,
         }, ensure_ascii=False, default=str)
 
     @classmethod
@@ -85,6 +98,7 @@ class ConversationSession:
             state=ConversationState.from_dict(d.get("state")),
             created_at=d.get("created_at", _now_iso()),
             updated_at=d.get("updated_at", _now_iso()),
+            owner_id=d.get("owner_id"),
         )
 
 
@@ -105,11 +119,24 @@ class SessionStore:
                 "CREATE TABLE IF NOT EXISTS sessions ("
                 " id TEXT PRIMARY KEY, data TEXT NOT NULL, updated REAL NOT NULL)"
             )
+            cols = {row[1] for row in self._conn.execute("PRAGMA table_info(sessions)")}
+            if "owner_id" not in cols:  # Phase 6A migration
+                self._conn.execute("ALTER TABLE sessions ADD COLUMN owner_id TEXT")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_owner ON sessions(owner_id, updated)")
+            # Per-account financial memory shared by all of a user's conversations.
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS user_profiles ("
+                " user_id TEXT PRIMARY KEY, data TEXT NOT NULL, updated REAL NOT NULL)"
+            )
             self._conn.commit()
         self.purge_expired()
 
-    def create(self) -> ConversationSession:
-        session = ConversationSession(id=new_conversation_id())
+    def create(self, owner_id: Optional[str] = None) -> ConversationSession:
+        session = ConversationSession(id=new_conversation_id(), owner_id=owner_id)
+        if owner_id:
+            profile = self.get_user_profile(owner_id)
+            if profile is not None:
+                session.profile = profile
         self.save(session)
         return session
 
@@ -128,10 +155,17 @@ class SessionStore:
     def save(self, session: ConversationSession) -> None:
         with self._lock:
             self._conn.execute(
-                "INSERT INTO sessions (id, data, updated) VALUES (?, ?, ?) "
-                "ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated = excluded.updated",
-                (session.id, session.to_json(), time.time()),
+                "INSERT INTO sessions (id, data, updated, owner_id) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated = excluded.updated, "
+                "owner_id = excluded.owner_id",
+                (session.id, session.to_json(), time.time(), session.owner_id),
             )
+            if session.owner_id:
+                self._conn.execute(
+                    "INSERT INTO user_profiles (user_id, data, updated) VALUES (?, ?, ?) "
+                    "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated = excluded.updated",
+                    (session.owner_id, json.dumps(session.profile.to_dict(), ensure_ascii=False, default=str), time.time()),
+                )
             self._conn.commit()
             self._saves += 1
         if self._saves % 100 == 0:
@@ -142,6 +176,50 @@ class SessionStore:
             cur = self._conn.execute("DELETE FROM sessions WHERE id = ?", (conversation_id,))
             self._conn.commit()
             return cur.rowcount > 0
+
+    # ── Per-user data (Phase 6A) ──────────────────────────────────────────
+    def list_for_owner(self, owner_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        limit = max(1, min(int(limit), 200))
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT data, updated FROM sessions WHERE owner_id = ? ORDER BY updated DESC LIMIT ?",
+                (owner_id, limit),
+            ).fetchall()
+        out = []
+        for raw, updated in rows:
+            if self.ttl_seconds and time.time() - updated > self.ttl_seconds:
+                continue
+            session = ConversationSession.from_json(raw)
+            out.append({
+                "conversation_id": session.id,
+                "title": session.title(),
+                "created_at": session.created_at,
+                "updated_at": session.updated_at,
+                "turns": len(session.turns) // 2,
+            })
+        return out
+
+    def get_user_profile(self, user_id: str) -> Optional[FinancialProfile]:
+        with self._lock:
+            row = self._conn.execute("SELECT data FROM user_profiles WHERE user_id = ?", (user_id,)).fetchone()
+        return FinancialProfile.from_dict(json.loads(row[0])) if row else None
+
+    def save_user_profile(self, user_id: str, profile: FinancialProfile) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO user_profiles (user_id, data, updated) VALUES (?, ?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated = excluded.updated",
+                (user_id, json.dumps(profile.to_dict(), ensure_ascii=False, default=str), time.time()),
+            )
+            self._conn.commit()
+
+    def delete_user_data(self, user_id: str) -> int:
+        """Delete every conversation and the saved memory of one account."""
+        with self._lock:
+            cur = self._conn.execute("DELETE FROM sessions WHERE owner_id = ?", (user_id,))
+            self._conn.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
+            self._conn.commit()
+            return cur.rowcount
 
     def purge_expired(self) -> int:
         if not self.ttl_seconds:
