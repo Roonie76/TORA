@@ -4927,6 +4927,36 @@
       ]
     },
     {
+      "id": "tax-on-my-salary-from-memory",
+      "category": "tax",
+      "description": "Tax on the salary already in memory, without a planner call",
+      "turns": [
+        {
+          "user": "My salary is 88k a month",
+          "expect": {
+            "profile": {
+              "income": 88000.0
+            }
+          }
+        },
+        {
+          "user": "How much tax will I pay this year on my salary?",
+          "answer": "On ₹10,56,000 a year the new regime works out to ₹0 tax, because the rebate covers income up to ₹12 lakh.",
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "fast_path": true,
+            "tool_output": {
+              "tax_calc.operation": "compute_tax",
+              "tax_calc.inputs.gross_salary": 1056000.0,
+              "tax_calc.total_tax": 0.0
+            }
+          }
+        }
+      ]
+    },
+    {
       "id": "debt-shortfall",
       "category": "debt",
       "description": "Income can't cover minimums",

@@ -120,3 +120,28 @@ def test_prompts_cover_debt_stress():
     from backend.prompts.tora import TORA_SYSTEM_PROMPT
     assert "debt_rescue_plan" in get_planner_system_prompt([])
     assert "Integrated Ombudsman" in TORA_SYSTEM_PROMPT and "14416" in TORA_SYSTEM_PROMPT
+
+
+def test_consolidation_comparison_rows_are_consistent():
+    """The answer copies these rows, so they must add up on their own."""
+    from backend.finance.debt import consolidation_check
+
+    out = consolidation_check(
+        debts=[{"name": "credit card", "balance": 120000, "apr": 40, "min_payment": 6000},
+               {"name": "personal loan", "balance": 250000, "apr": 15, "min_payment": 9000}],
+        new_rate=14, tenure_months=36, processing_fee_percent=2,
+    )
+    rows = {r["item"]: r for r in out["comparison"]}
+    assert set(rows) == {"Total debt", "Monthly outflow compared", "Months to clear", "Interest", "Fees",
+                         "Total cost (interest + fees)"}
+    money = lambda text: float(text.replace("₹", "").replace(",", ""))
+    assert money(rows["Total debt"]["current"]) == 370000
+    assert rows["Monthly outflow compared"]["current"] == rows["Monthly outflow compared"]["consolidation"]
+    assert money(rows["Interest"]["current"]) == round(out["current_plan_interest"])
+    assert money(rows["Interest"]["consolidation"]) == round(out["new_loan_interest_same_outflow"])
+    assert money(rows["Fees"]["consolidation"]) == round(out["fees"])
+    # total cost = interest + fees on the new loan, and interest alone on the current debts
+    assert money(rows["Total cost (interest + fees)"]["consolidation"]) == round(out["new_total_cost"])
+    assert abs((money(rows["Total cost (interest + fees)"]["current"])
+                - money(rows["Total cost (interest + fees)"]["consolidation"])) - out["net_saving"]) <= 1
+    assert int(rows["Months to clear"]["consolidation"]) == out["new_loan_months_same_outflow"]

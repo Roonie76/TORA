@@ -290,6 +290,18 @@ def consolidation_check(
         "current_plan_interest": current["total_interest"],
         "current_plan_months": current["months_to_debt_free"],
         "net_saving": _r(saving),
+        # Ready-made rows so the answer never has to relabel a figure.
+        "comparison": [
+            {"item": "Total debt", "current": inr(total), "consolidation": inr(total)},
+            {"item": "Monthly outflow compared", "current": inr(budget), "consolidation": inr(budget)},
+            {"item": "Months to clear", "current": f"{current['months_to_debt_free']}",
+             "consolidation": f"{same_outflow['months_to_debt_free']}"},
+            {"item": "Interest", "current": inr(current["total_interest"]),
+             "consolidation": inr(same_outflow["total_interest"])},
+            {"item": "Fees", "current": inr(0), "consolidation": inr(fee)},
+            {"item": "Total cost (interest + fees)", "current": inr(current["total_interest"]),
+             "consolidation": inr(new_cost)},
+        ],
         "verdict": verdict,
         "notes": notes,
         "summary": (f"Paying {inr(budget)} a month, a {new_rate:g}% consolidation loan costs {inr(new_cost)} "

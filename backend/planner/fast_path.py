@@ -387,12 +387,50 @@ def _essentials(facts: Dict[str, float]) -> Optional[float]:
     return sum(parts) if len(parts) >= 2 else None
 
 
-def profile_plan(message: str, intent: Any, profile: Any, available_tools: Optional[set] = None) -> Optional[ToolPlan]:
-    """A debt-rescue plan built from what TORA already knows, so the figures come from the engine."""
-    tools = available_tools if available_tools is not None else {"finance_calc"}
-    if "finance_calc" not in tools or not message or not _DEBT_RESCUE.search(normalize_message(message)):
+# "How much tax will I pay this year on my salary?" — the salary is already in memory.
+_TAX_ON_MY_SALARY = re.compile(
+    r"(?:how\s+much\s+)?(?:income\s+)?tax\b(?=[^?]*\b(?:my|i|me)\b)"
+    r"|what(?:'?s| is)\s+my\s+(?:income\s+)?tax\b"
+    r"|\bmy\s+tax\s+(?:liability|outgo|bill)\b"
+    r"|\bwhich\s+(?:tax\s+)?regime\b(?=[^?]*\b(?:me|my|i)\b)",
+    re.IGNORECASE,
+)
+_TAX_NEEDS_PLANNER = re.compile(
+    r"\b(?:80\s*[cd]|80ccd|hra|capital\s+gains?|ltcg|stcg|rental|house\s+property|advance\s+tax|itr|"
+    r"deduction|freelanc\w*|business|bonus|last\s+year|20\d{2}\s*[-/]\s*\d{2})\b",
+    re.IGNORECASE,
+)
+
+
+def _tax_plan_from_profile(message: str, lower: str, facts: Dict[str, float], tools: set) -> Optional[ToolPlan]:
+    if "tax_calc" not in tools or not _TAX_ON_MY_SALARY.search(lower) or _TAX_NEEDS_PLANNER.search(lower):
         return None
+    if _money_values(lower):
+        return None  # a figure in the message belongs to the normal salary fast path
+    if not re.search(r"\b(?:salary|earn\w*|income|pay)\b|\bmy\s+(?:income\s+)?tax\b|\bregime\b", lower):
+        return None
+    income = facts.get("income")
+    if not income or income * 12 < 100000:
+        return None
+    params: Dict[str, Any] = {"gross_salary": round(income * 12, 2)}
+    compare = bool(re.search(r"\b(?:which|better|compare|comparison|vs|versus|both)\b", lower))
+    if compare or re.search(r"\bregime\b", lower):
+        return _plan("tax_calc", {"operation": "compare_regimes", "params": params}, "compare_regimes from memory")
+    return _plan("tax_calc", {"operation": "compute_tax", "params": params}, "compute_tax from memory")
+
+
+def profile_plan(message: str, intent: Any, profile: Any, available_tools: Optional[set] = None) -> Optional[ToolPlan]:
+    """Plans built from what TORA already knows, so the figures come from an engine."""
+    tools = available_tools if available_tools is not None else {"finance_calc", "tax_calc"}
+    if not message:
+        return None
+    text = normalize_message(message)
     facts = _facts(profile)
+    tax = _tax_plan_from_profile(message, text.lower(), facts, tools)
+    if tax is not None:
+        return tax
+    if "finance_calc" not in tools or not _DEBT_RESCUE.search(text):
+        return None
     income = facts.get("income")
     debts = _debts_from_facts(facts)
     essentials = _essentials(facts)

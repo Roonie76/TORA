@@ -265,3 +265,28 @@ def test_debt_rescue_ignores_unrelated_questions():
     for message in ("what is my total debt?", "should I take a consolidation loan?",
                     "what is 5% of 1.2 lakh?", "how much tax will I pay?"):
         assert profile_plan(message, None, profile, {"finance_calc"}) is None, message
+
+
+def test_tax_on_my_salary_uses_the_remembered_income():
+    from backend.planner.fast_path import profile_plan
+    profile = _profile_with(income=88000)
+    plan = profile_plan("How much tax will I pay this year on my salary?", None, profile, {"tax_calc", "finance_calc"})
+    assert plan.steps[0].tool_name == "tax_calc"
+    assert plan.steps[0].arguments == {"operation": "compute_tax", "params": {"gross_salary": 1056000.0}}
+    compare = profile_plan("Which regime is better for me?", None, profile, {"tax_calc"})
+    assert compare.steps[0].arguments["operation"] == "compare_regimes"
+
+
+def test_tax_from_memory_defers_when_the_case_is_not_plain_salary():
+    from backend.planner.fast_path import profile_plan
+    profile = _profile_with(income=88000)
+    for message in (
+        "How much tax on a 12 lakh salary?",          # figures in the message: the normal fast path
+        "How much tax will I pay with my 1.5 lakh 80C?",  # deductions: planner
+        "What tax did I pay in 2019-20?",             # another year: planner
+        "What is my HRA exemption?",                  # its own calculation
+        "What tax do I pay on my capital gains?",     # not salary
+        "What is my rent?",                           # not a tax question
+    ):
+        assert profile_plan(message, None, profile, {"tax_calc", "finance_calc"}) is None, message
+    assert profile_plan("what is my tax?", None, _profile_with(rent=20000), {"tax_calc"}) is None
