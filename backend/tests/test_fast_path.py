@@ -84,7 +84,8 @@ def test_small_talk_and_case_note():
     assert not _is_small_talk("Hi, what is an EMI?", general)
     assert not _is_small_talk("Hello", IntentResult(Intent.FINANCIAL_QA, [], None))
     assert _case_note(Complexity("standard", 1)) == ""
-    assert "senior CA" in _case_note(Complexity("complex", 5))
+    note = _case_note(Complexity("complex", 5))
+    assert "experienced chartered accountant" in note and "never claim to be a CA" in note
 
 
 class Recorder(LLMProvider):

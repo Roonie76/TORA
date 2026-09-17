@@ -103,7 +103,8 @@ def _case_note(complexity: Optional[Complexity]) -> str:
     """Scale the answer style with the case (Phase 7)."""
     if complexity is None or not complexity.is_complex:
         return ""
-    return ("\n\n## This Case\n- This is a multi-factor decision. Work like a senior CA: state the key facts you are "
+    return ("\n\n## This Case\n- This is a multi-factor decision. Work the way an experienced chartered accountant would "
+            "(but never claim to be a CA or a professional): state the key facts you are "
             "using, compare two or three realistic options with their rupee impact (use only tool figures or clearly "
             "labelled assumptions), recommend one with the reason, name the main risk, and list what the user should "
             "confirm. Ask for any missing fact that would change the recommendation.")
