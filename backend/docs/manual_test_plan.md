@@ -14,6 +14,7 @@ ollama pull gemma4:e4b   # keep `ollama serve` running
 $env:TORA_DEBUG_ENDPOINTS="1"
 $env:TORA_RATE_LIMIT_PER_MINUTE="0"   # disable limits for manual runs (A3 re-enables)
 $env:TORA_GROUNDING_MODE="regenerate"
+# optional: $env:TORA_LLM_THINK="false" (default) · $env:TORA_MAX_ANSWER_TOKENS="700" on slow CPUs · $env:TORA_AUTH_MODE="optional" for the Accounts section
 python -m uvicorn backend.main:app --port 8000
 npm run web   # second terminal, for the UI section
 ```
@@ -55,7 +56,7 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- 857 passed, 0 failed (warnings from FastAPI/anyio are fine)
+- 879 passed, 0 failed (warnings from FastAPI/anyio are fine)
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -67,7 +68,7 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- Prints Scenarios: 126/126 passed · checks: 331/331
+- Prints Scenarios: 126/126 passed · checks: 332/332
 - Exit code 0
 - The category table includes language (Hinglish/typos) and accounts
 

@@ -4,9 +4,9 @@
 
 | Sub-phase | Status | What changed |
 |---|---|---|
-| 5A Live baseline | Done (see numbers below) | `python -m backend.evals --mode live` run against `gemma4:e4b` on CPU |
+| 5A Live check | Done: a live manual run replaced the full live benchmark | See `manual_test_report_2026_09.md` |
 | 5B Bigger benchmark | Done | 22 → 121 scenarios; offline gate 121/121 (314 checks) |
-| 5C Runbook fixes | No failures recorded yet | The runbook's shared results store was empty when checked |
+| 5C Runbook fixes | Done | Every problem found in the live run was fixed, tested and rerun (see report) |
 | 5D Planner reliability | Done | JSON-schema `format`, parameter coercion, validation, repair retry (`TORA_PLANNER_REPAIRS`) |
 | 5E Model-assisted extraction | Done | LLM proposes facts only when rules find nothing; every proposal must quote verbatim evidence that parses to the same value (`TORA_LLM_EXTRACTION=off` disables it) |
 
@@ -32,4 +32,22 @@ Fixes found by the new scenarios:
 
 ## 5A — live baseline
 
-LIVE_RESULTS_PLACEHOLDER
+The full live benchmark (22 scenarios, pre-5D code) was stopped after about 30 minutes because each model call took about 2 minutes.
+Instead, the manual runbook was run live on the current code, which tests the same abilities and shows real answers.
+
+The main finding was that gemma4 writes a hidden thinking pass on every call. Turning it off (`TORA_LLM_THINK=false`, now the default) made memory turns about 4× faster.
+Planner turns are still slow on CPU (planner step median 76 s), so skipping the planner for obvious requests is the top item for Phase 7.
+
+New settings from this phase:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TORA_LLM_EXTRACTION` | `auto` | Model-assisted memory when the rules find nothing (`off` to disable) |
+| `TORA_PLANNER_REPAIRS` | `1` | How many times the planner may retry after producing an invalid plan |
+| `TORA_LLM_THINK` | `false` | Turn off the model's hidden thinking pass (`true` or `auto` to change) |
+| `TORA_MAX_ANSWER_TOKENS` | unset | Optional answer-length cap for slow machines (for example 700) |
+
+Keep `OLLAMA_NUM_PARALLEL=1` on 8 GB machines: 2 slots ran out of memory during the run.
+
+Full results: `backend/docs/manual_test_report_2026_09.md`.
+

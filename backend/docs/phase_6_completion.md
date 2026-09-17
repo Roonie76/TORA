@@ -58,7 +58,7 @@ Changes to existing endpoints:
 
 ## Tests and benchmark
 
-- `backend/tests/test_accounts_and_spendsy.py` (28 tests):
+- `backend/tests/test_accounts_and_spendsy.py` (30 tests):
   - token parsing, gateway verifier (envelope, caching, 401/500/bad JSON/unreachable);
   - off / optional / required modes, and 503 when the auth service is down;
   - conversation privacy, account memory shared across conversations, clearing memory and deleting account data;
@@ -66,6 +66,16 @@ Changes to existing endpoints:
   - transaction normalisation, summary maths, paging and stopping at the requested period, and client errors;
   - the tool refusing anonymous callers, results rendered as untrusted, the planner hiding the tool, and an end-to-end signed-in chat.
 - Benchmark: 5 new `accounts` scenarios, 126/126 offline.
+
+## Live check (stand-in gateway)
+
+Run against a stand-in auth and finance service with `gemma4:e4b` (report: `manual_test_report_2026_09.md`, checks P0–P13):
+- `/api/me`, 401 for bad tokens, and 404 for other users' conversations all behaved correctly.
+- Spending totals matched the data exactly.
+- The injected text in a transaction description was ignored.
+- Account memory carried into a new conversation, and clear/delete worked.
+
+Two issues were fixed during the run (P5 averages over a partial month, P9 sign-in hint).
 
 ## Not done / needs the Spendsy services
 
