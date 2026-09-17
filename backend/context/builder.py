@@ -193,7 +193,9 @@ class ContextBuilder:
         # Compact rendering for the deterministic finance engine
         if res.tool_name in ("finance_calc", "tax_calc") and isinstance(res.output, dict):
             out = res.output
-            skip = {"operation", "inputs", "summary", "assumptions", "yearly_schedule", "slab_breakdown", "notes"}
+            skip = {"operation", "inputs", "summary", "assumptions", "yearly_schedule", "slab_breakdown", "notes",
+                    "recommended", "confidence", "reason", "breakeven_return", "breakeven_appreciation",
+                    "difference", "invest_minus_prepay"}
             figures = ", ".join(f"{k}={v}" for k, v in out.items() if k not in skip and not isinstance(v, (list, dict)))
             lines = [
                 f"- Tool '{res.tool_name}' ({out.get('operation')}): {out.get('summary', '')}",
@@ -208,6 +210,20 @@ class ContextBuilder:
                 lines.append(f"  Slab breakdown: {out['slab_breakdown']}")
             if out.get("notes"):
                 lines.append(f"  Notes: {' '.join(out['notes'])}")
+            if isinstance(out.get("options"), list) and out["options"]:
+                lines.append(f"  options: {out['options']}")
+                for key in ("recommended", "confidence", "reason", "breakeven_return", "breakeven_appreciation",
+                            "difference", "invest_minus_prepay"):
+                    if out.get(key) is not None:
+                        lines.append(f"  {key}: {out[key]}")
+                if out.get("what_to_confirm"):
+                    lines.append(f"  what_to_confirm: {out['what_to_confirm']}")
+            for key in ("snapshot", "survival_budget", "plan", "comparison", "savings_move"):
+                if isinstance(out.get(key), dict) and out[key]:
+                    lines.append(f"  {key}: {out[key]}")
+            for listing in ("what_if_extra", "warnings", "areas", "priorities"):
+                if isinstance(out.get(listing), list) and out[listing]:
+                    lines.append(f"  {listing}: {out[listing]}")
             for listing in ("buckets", "goals", "actions"):
                 if isinstance(out.get(listing), list) and out[listing]:
                     lines.append(f"  {listing}: {out[listing]}")

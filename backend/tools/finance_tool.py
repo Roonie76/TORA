@@ -12,6 +12,7 @@ OperationName = Literal[
     "compound_growth", "inflation_adjust", "debt_payoff", "emergency_fund",
     "savings_rate", "debt_to_income", "net_worth", "budget_plan", "goal_plan", "retirement_plan",
     "debt_snapshot", "debt_rescue_plan", "consolidation_check", "minimum_due_trap",
+    "prepay_vs_invest", "rent_vs_buy", "loan_tenure_choice", "financial_health_check",
 ]
 
 

@@ -210,6 +210,9 @@ def assess_complexity(message: str, intent: Any = None, fast: Optional[ToolPlan]
     if _DECISION_WORDS.search(lower):
         score += 2
         reasons.append("decision or strategy question")
+        if re.search(r"\b(?:or|vs\.?|versus)\b", lower):
+            score += 1
+            reasons.append("choosing between alternatives")
     amounts = len(_money_values(lower))
     if amounts >= 4:
         score += 2

@@ -5066,6 +5066,198 @@
           }
         }
       ]
+    },
+    {
+      "id": "advice-prepay-invest",
+      "category": "advice",
+      "description": "Prepay vs invest with a recommendation",
+      "turns": [
+        {
+          "user": "I have 30 lakh left on my home loan at 8.5% for 15 more years and 10k spare every month. Should I prepay or invest in a SIP?",
+          "plan": {
+            "thought": "compare",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "prepay_vs_invest",
+                  "params": {
+                    "loan_balance": 3000000,
+                    "loan_rate": 8.5,
+                    "remaining_months": 180,
+                    "amount": 10000
+                  }
+                }
+              }
+            ]
+          },
+          "answer": "Investing is ahead: ₹46,11,952 vs ₹39,03,145 by the loan end, but only if returns stay above 9.2%.",
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.recommended": "invest"
+            },
+            "complexity": "complex",
+            "system_contains": [
+              "recommended: invest",
+              "## This Case"
+            ],
+            "grounding_action": "none"
+          }
+        }
+      ]
+    },
+    {
+      "id": "advice-rent-buy",
+      "category": "advice",
+      "description": "Rent vs buy",
+      "turns": [
+        {
+          "user": "Should I buy an 80 lakh flat with a loan at 8.5% or keep renting at 25k a month?",
+          "plan": {
+            "thought": "compare",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "rent_vs_buy",
+                  "params": {
+                    "property_price": 8000000,
+                    "monthly_rent": 25000,
+                    "loan_rate": 8.5
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.recommended": "rent_and_invest",
+              "finance_calc.upfront_cash_needed": 2160000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "advice-health-check",
+      "category": "advice",
+      "description": "Overall check-up with priorities",
+      "turns": [
+        {
+          "user": "I earn 80k, spend 40k, EMIs 15k, 50k saved, 1 lakh card debt, invest 5k, wife and child depend on me. Where do I stand?",
+          "plan": {
+            "thought": "compare",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "financial_health_check",
+                  "params": {
+                    "monthly_income": 80000,
+                    "monthly_expenses": 40000,
+                    "emergency_savings": 50000,
+                    "monthly_emis": 15000,
+                    "high_interest_debt": 100000,
+                    "monthly_investments": 5000,
+                    "dependents": 2
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.grade": "needs attention"
+            },
+            "system_contains": [
+              "priorities"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "advice-tenure",
+      "category": "advice",
+      "description": "Loan tenure choice",
+      "turns": [
+        {
+          "user": "50 lakh home loan at 8.5% — 15 years or 25 years and invest the difference?",
+          "plan": {
+            "thought": "compare",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "loan_tenure_choice",
+                  "params": {
+                    "principal": 5000000,
+                    "loan_rate": 8.5,
+                    "short_years": 15,
+                    "long_years": 25
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "tool_output": {
+              "finance_calc.recommended": "shorter_tenure"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "advice-invented-breakeven",
+      "category": "advice",
+      "description": "An invented comparison figure is rewritten",
+      "turns": [
+        {
+          "user": "Prepay or invest? 30 lakh home loan at 8.5%, 15 years left, 10k spare a month.",
+          "plan": {
+            "thought": "compare",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "prepay_vs_invest",
+                  "params": {
+                    "loan_balance": 3000000,
+                    "loan_rate": 8.5,
+                    "remaining_months": 180,
+                    "amount": 10000
+                  }
+                }
+              }
+            ]
+          },
+          "answers": [
+            "Investing gives you ₹58,40,000 more, so invest.",
+            "Investing ends about ₹7,08,807 ahead."
+          ],
+          "expect": {
+            "grounding_action": "regenerated"
+          }
+        }
+      ]
     }
   ]
 }
