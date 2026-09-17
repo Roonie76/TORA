@@ -78,13 +78,18 @@ class OllamaProvider(LLMProvider):
         self,
         host: Optional[str] = None,
         default_model: Optional[str] = None,
-        timeout: float = 180.0,
+        timeout: Optional[float] = None,
         client: Optional[httpx.AsyncClient] = None,
         num_ctx: Optional[int] = None,
     ):
         raw_host = host if host is not None else os.getenv("OLLAMA_HOST", "")
         self.host = normalize_ollama_host(raw_host)
         self._default_model = default_model or os.getenv("OLLAMA_MODEL", "gemma4:e4b")
+        if timeout is None:
+            try:
+                timeout = float(os.getenv("TORA_LLM_TIMEOUT_SECONDS", "180"))
+            except ValueError:
+                timeout = 180.0
         self.timeout = timeout
         self._client = client
         self._num_ctx = _resolve_num_ctx(num_ctx)
@@ -215,6 +220,9 @@ class OllamaProvider(LLMProvider):
             "stream": False,
             "options": opts,
         }
+        if options and options.get("format"):
+            # Constrained decoding: a JSON schema (or "json") understood by Ollama >= 0.5
+            payload["format"] = options["format"]
 
         started = time.monotonic()
         try:
