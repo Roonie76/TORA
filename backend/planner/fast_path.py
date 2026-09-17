@@ -67,6 +67,17 @@ def _money_values(text: str) -> List[float]:
     return values
 
 
+def _labelled_amount(text: str, label: str) -> Optional[float]:
+    """Amount written right after (or right before) a label, e.g. 'basic is 50k' / '25k rent'."""
+    m = re.search(r"\b" + label + r"\b(?:\s+(?:is|of|=|:|was|about|around|received))*\s*((?:₹|rs\.?\s*)?\d[\d,]*(?:\.\d+)?\s*(?:" + _UNIT + r")?)", text)
+    if not m:
+        m = re.search(r"((?:₹|rs\.?\s*)?\d[\d,]*(?:\.\d+)?\s*(?:" + _UNIT + r")?)\s+(?:as\s+|in\s+|of\s+)?" + label + r"\b", text)
+    if not m:
+        return None
+    values = _money_values(m.group(1))
+    return values[0] if len(values) == 1 else None
+
+
 def _one(values: List[float]) -> Optional[float]:
     uniq = sorted(set(values))
     return uniq[0] if len(uniq) == 1 else None
@@ -155,6 +166,25 @@ def fast_plan(message: str, intent: Any = None, available_tools: Optional[set] =
                     else "future_cost"
                 return _finance("inflation_adjust", {"amount": amount, "inflation_rate": percent, "years": years,
                                                      "direction": direction})
+
+    # 7a. HRA exemption: basic, HRA and rent all given
+    if "tax_calc" in tools and re.search(r"\b(?:hra|house\s+rent\s+allowance)\b", lower) and re.search(r"\bexempt", lower):
+        basic = _labelled_amount(lower, r"basic(?:\s+salary|\s+pay)?")
+        hra_amt = _labelled_amount(lower, r"(?:hra|house\s+rent\s+allowance)")
+        rent = _labelled_amount(lower, r"(?:rent(?:\s+paid)?|pay\s+(?:a\s+)?rent\s+of|pay)")
+        if basic and hra_amt and rent:
+            params: Dict[str, Any] = {"basic_monthly": basic, "hra_received_monthly": hra_amt, "rent_paid_monthly": rent}
+            if re.search(r"\b(?:mumbai|delhi|kolkata|chennai)\b", lower):
+                params["metro"] = True
+            elif re.search(r"\bnon[- ]?metro\b", lower):
+                params["metro"] = False
+            elif re.search(r"\bmetro\b", lower):
+                params["metro"] = True
+            else:
+                params["metro"] = False
+            if re.search(r"\b(?:a|per)\s+year\b|\bannual\w*\b|\byearly\b", lower):
+                return None  # yearly figures: let the planner convert
+            return _plan("tax_calc", {"operation": "hra_exemption", "params": params}, "hra_exemption")
 
     # 7. Rule / limit / deadline questions -> reviewed rules library
     if ("rules_lookup" in tools and _RULE_QUESTION.search(lower) and not _money_values(lower)

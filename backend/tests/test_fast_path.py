@@ -153,3 +153,18 @@ def test_complex_cases_scale_model_and_reasoning(monkeypatch):
     llm2 = Recorder()
     asyncio.run(_agent(llm2).run(message="Hi TORA"))
     assert llm2.calls[-1]["model"] is None and "think" not in llm2.calls[-1]["options"]
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("My basic is 50k, HRA 20k and I pay 25k rent in Mumbai. How much HRA is exempt?",
+     {"basic_monthly": 50000.0, "hra_received_monthly": 20000.0, "rent_paid_monthly": 25000.0, "metro": True}),
+    ("Basic salary 40,000, HRA 16,000, rent paid 18,000 in Pune — HRA exemption?",
+     {"basic_monthly": 40000.0, "hra_received_monthly": 16000.0, "rent_paid_monthly": 18000.0, "metro": False}),
+])
+def test_hra_fast_path(message, expected):
+    plan = fast_plan(message)
+    assert plan.steps[0].arguments == {"operation": "hra_exemption", "params": expected}
+
+
+def test_hra_yearly_figures_go_to_planner():
+    assert fast_plan("basic 6 lakh a year, hra 2.4 lakh, rent 3 lakh a year, how much hra exempt") is None
