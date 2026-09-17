@@ -226,7 +226,7 @@ _DECISION_WORDS = re.compile(
     r"prioriti[sz]e|plan\s+my|what\s+do\s+i\s+do|help\s+me\s+(?:decide|plan|get\s+out|clear)|"
     r"trade[- ]?off|pros\s+and\s+cons|recommend|restructur|consolidat|refinanc|settle\w*|pay\s*off|payoff|"
     r"avalanche|snowball|debt[- ]free|retire\w*|right\s+(?:regime|choice|option|move)|save\s+(?:more\s+)?tax|"
-    r"tax\s+planning|minimi[sz]e|where\s+do\s+i\s+stand|get\s+out\s+of\s+debt|can'?t\s+manage|drowning)\b",
+    r"tax\s+planning|minimi[sz]e|where\s+do\s+i\s+stand|right\s+tax\s+regime|get\s+out\s+of\s+debt|can'?t\s+manage|drowning)\b",
     re.IGNORECASE,
 )
 _MULTI_ITEM = re.compile(r"\b(?:loans?|cards?|emis?|goals?|debts?|investments?|policies|properties)\b", re.IGNORECASE)
@@ -282,3 +282,34 @@ def assess_complexity(message: str, intent: Any = None, fast: Optional[ToolPlan]
         reasons.append("rich profile")
     level = "complex" if score >= 4 else ("standard" if score >= 1 or intent_value not in (None, "general_qa") else "simple")
     return Complexity(level, score, reasons)
+
+
+# ── document-driven plans ────────────────────────────────────────────────────
+
+_TAX_REVIEW = re.compile(
+    r"\b(?:right\s+(?:tax\s+)?regime|which\s+regime|regime\s+(?:is\s+)?better|save\s+(?:more\s+)?tax|tax\s+saving|"
+    r"reduce\s+(?:my\s+)?tax|unused\s+deduction|missed\s+deduction|claim\s+more)\b",
+    re.IGNORECASE,
+)
+
+
+def document_plan(message: str, documents: List[Dict[str, Any]]) -> Optional[ToolPlan]:
+    """Use the latest Form 16 for regime / tax-saving questions (no need to re-type the figures)."""
+    if not documents or not _TAX_REVIEW.search(normalize_message(message or "")):
+        return None
+    if any(v >= 1000 for v in _money_values(message.lower())):
+        return None  # the user gave new figures; let the planner combine them
+    form16 = next((d for d in reversed(documents) if d.get("doc_type") == "form16"), None)
+    s = (form16 or {}).get("summary") or {}
+    if not s.get("gross_salary"):
+        return None
+    params: Dict[str, Any] = {"gross_salary": s["gross_salary"]}
+    for src, dst in (("section_80c", "section_80c"), ("section_80d", "section_80d_self"),
+                     ("section_80ccd_1b", "section_80ccd_1b"), ("hra_exempt", "hra_exempt_annual")):
+        if s.get(src):
+            params[dst] = s[src]
+    if s.get("regime") in ("old", "new"):
+        params["current_regime"] = s["regime"]
+    if s.get("tax_year"):
+        params["tax_year"] = s["tax_year"]
+    return _plan("tax_calc", {"operation": "tax_saving_finder", "params": params}, "form16 tax review")

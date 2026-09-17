@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -13,7 +14,7 @@ from ..llm.base import (
 from ..prompts.tora import TORA_SYSTEM_PROMPT
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
-from ..planner.fast_path import Complexity, assess_complexity, fast_plan
+from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan
 from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
@@ -309,7 +310,10 @@ class ToraAgent:
             and intent.intent in (Intent.CALCULATION, Intent.FINANCIAL_QA, Intent.WHAT_IF,
                                   Intent.PLANNING, Intent.GENERAL_QA)
         ):
-            candidate = fast_plan(message, intent, {t.name for t in self._planner._usable_tools()})
+            usable = {t.name for t in self._planner._usable_tools()}
+            candidate = fast_plan(message, intent, usable)
+            if candidate is None and conversation_state is not None and "tax_calc" in usable:
+                candidate = document_plan(message, conversation_state.documents)
             if candidate is not None:
                 checked = self._planner._validate_and_sanitize_plan(candidate)
                 if checked.requires_tools and checked.steps:
@@ -348,6 +352,13 @@ class ToraAgent:
                 known_facts = "\n".join(
                     f"- {f.name}: {f.value} ({f.period or 'n/a'})" for f in active_profile.iter_current_facts()
                 )
+            if conversation_state is not None and conversation_state.documents:
+                doc_lines = []
+                for d in conversation_state.documents[-2:]:
+                    figures = {k: v for k, v in (d.get("summary") or {}).items()
+                               if isinstance(v, (int, float, str)) and v not in (None, "")}
+                    doc_lines.append(f"- uploaded {d.get('doc_type')}: {json.dumps(figures, ensure_ascii=False)[:600]}")
+                known_facts = "\n".join(filter(None, [known_facts] + doc_lines))
             planner_timer = TraceTimer()
             executed_plan = await self._planner.plan(
                 message=planner_message,

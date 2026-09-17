@@ -1,6 +1,6 @@
 """TORA deterministic financial calculator tool (Phase 3B)."""
 
-from typing import Any, Dict, Literal, Type
+from typing import Any, Dict, Literal, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -32,8 +32,10 @@ class FinanceCalcTool(BaseTool):
     description: str = (
         "Deterministic personal-finance calculator. Use for EMIs, loan prepayment/amortization, SIP and "
         "lump-sum growth, SIP what-if changes, required SIP for a goal, inflation, debt payoff plans, "
-        "emergency fund, savings rate, debt-to-income, net worth, 50/30/20 budget plans, multi-goal plans and "
-        "retirement corpus planning. Operations and params: " + _PARAM_DOC
+        "emergency fund, savings rate, debt-to-income, net worth, 50/30/20 budget plans, multi-goal plans, "
+        "retirement corpus planning, debt rescue (snapshot, rescue plan, consolidation, minimum-due trap) and "
+        "option comparisons (prepay vs invest, rent vs buy, loan tenure, financial health check). "
+        "Operations and params: " + _PARAM_DOC
     )
     args_schema: Type[BaseModel] = FinanceCalcInput
 
@@ -47,6 +49,26 @@ class FinanceCalcTool(BaseTool):
             requires_auth=False,
         )
         super().__init__()
+
+    def check_arguments(self, args: Dict[str, Any]) -> Optional[str]:
+        """Unknown or missing parameter names, reported at planning time so the planner can repair them."""
+        import inspect
+
+        from ..finance.engine import OPERATIONS
+
+        fn = OPERATIONS.get(args.get("operation"))
+        params = args.get("params") or {}
+        if fn is None:
+            return None
+        sig = inspect.signature(fn)
+        unknown = set(params) - set(sig.parameters)
+        if unknown:
+            return (f"Unknown parameter(s) for {args['operation']}: {', '.join(sorted(unknown))}. "
+                    f"Expected: {OPERATION_PARAMS[args['operation']]}.")
+        missing = [n for n, p in sig.parameters.items() if p.default is inspect._empty and n not in params]
+        if missing:
+            return f"Missing parameter(s) for {args['operation']}: {', '.join(missing)}."
+        return None
 
     async def execute(self, operation: str, params: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
         return run_operation(operation, params)

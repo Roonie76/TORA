@@ -193,3 +193,27 @@ def test_owned_documents_are_private(client, monkeypatch):
     assert ok.status_code == 200
     assert "84,000" in c.get("/api/me/memory", headers={"Authorization": "Bearer ta"}).json()["memory_summary"]
     main_module.session_store.delete_user_data("alice")
+
+
+def test_form16_questions_get_a_tax_review_plan():
+    from backend.planner.fast_path import document_plan
+    doc = parse_document(read("form16.txt"), "form16.txt").to_dict()
+    plan = document_plan("Looking at my Form 16, am I on the right tax regime and can I save more tax?", [doc])
+    params = plan.steps[0].arguments["params"]
+    assert plan.steps[0].arguments["operation"] == "tax_saving_finder"
+    assert params == {"gross_salary": 1250000, "section_80c": 150000, "section_80d_self": 25000,
+                      "section_80ccd_1b": 50000, "hra_exempt_annual": 120000, "current_regime": "old",
+                      "tax_year": "2025-26"}
+    assert document_plan("What is my Form 16 salary?", [doc]) is None
+    assert document_plan("Which regime is better if my salary becomes 20 lakh?", [doc]) is None
+    assert document_plan("Can I save more tax?", []) is None
+
+
+def test_form16_review_end_to_end(client, monkeypatch):
+    c, fake = client
+    monkeypatch.setenv("TORA_FAST_PATH", "on")
+    cid = upload(c, "form16.txt").json()["conversation_id"]
+    c.post("/api/chat", json={"conversation_id": cid, "message": "Am I on the right tax regime? Can I save more tax?"})
+    assert not fake.planner_calls
+    prompt = " ".join(m["content"] for m in fake.answer_calls[-1])
+    assert "tax_saving_finder" in prompt and "better_regime_now=new" in prompt

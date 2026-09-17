@@ -138,3 +138,48 @@ def test_ollama_sends_format_field():
 def test_llm_timeout_from_env(monkeypatch):
     monkeypatch.setenv("TORA_LLM_TIMEOUT_SECONDS", "600")
     assert OllamaProvider().timeout == 600.0
+
+
+def test_wrong_parameter_names_trigger_a_repair():
+    import asyncio
+    import json
+    from backend.llm.base import LLMProvider, LLMResponse
+    from backend.planner import Planner
+    from backend.tools import TaxCalcTool, ToolRegistry
+
+    class TwoPlans(LLMProvider):
+        def __init__(self):
+            self.calls = []
+            self.plans = [
+                {"thought": "x", "requires_tools": True, "steps": [
+                    {"tool_name": "tax_calc", "arguments": {"operation": "hra_exemption",
+                                                            "params": {"basic": 50000, "hra": 20000, "rent": 25000}}}]},
+                {"thought": "fixed", "requires_tools": True, "steps": [
+                    {"tool_name": "tax_calc", "arguments": {"operation": "hra_exemption",
+                                                            "params": {"basic_monthly": 50000, "hra_received_monthly": 20000,
+                                                                       "rent_paid_monthly": 25000}}}]},
+            ]
+
+        @property
+        def default_model(self):
+            return "m"
+
+        def resolve_model(self, requested=None, available=None):
+            return "m"
+
+        async def generate(self, messages, model=None, options=None):
+            self.calls.append(messages)
+            return LLMResponse(content=json.dumps(self.plans.pop(0)), model="m")
+
+        async def list_models(self):
+            return ["m"]
+
+        async def health_check(self):
+            return {}
+
+    registry = ToolRegistry()
+    registry.register(TaxCalcTool())
+    llm = TwoPlans()
+    plan = asyncio.run(Planner(llm_provider=llm, tool_registry=registry, max_repairs=1).plan("hra?"))
+    assert plan.requires_tools and plan.steps[0].arguments["params"]["basic_monthly"] == 50000
+    assert "Unknown parameter(s) for hra_exemption" in llm.calls[1][-1]["content"]

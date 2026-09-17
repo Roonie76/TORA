@@ -1,6 +1,6 @@
 """TORA deterministic income-tax tool (Phase 4C)."""
 
-from typing import Any, Dict, Literal, Type
+from typing import Any, Dict, Literal, Optional, Type
 
 from pydantic import BaseModel, Field
 
@@ -95,6 +95,32 @@ def _legal_basis(operation: str, params: Dict[str, Any]) -> list:
     return out
 
 
+_EXTRA_ALIASES = {
+    "itr_form_choice": {"ltcg_equity": "ltcg_112a", "ltcg": "ltcg_112a", "stcg_equity": "other_capital_gains",
+                        "ltcg_other": "other_capital_gains", "gross_salary": "total_income", "income": "total_income"},
+    "tax_saving_finder": {"salary": "gross_salary", "annual_salary": "gross_salary", "regime": "current_regime",
+                          "80c": "section_80c", "80d": "section_80d_self"},
+    "capital_gains_tax": {"buy_date": "purchase_date", "sell_date": "sale_date", "cost": "purchase_cost",
+                          "buy_price": "purchase_cost", "sale_price": "sale_value", "sell_price": "sale_value"},
+    "advance_tax_plan": {"tax": "estimated_tax", "total_tax": "estimated_tax", "tds": "tds_expected",
+                         "advance_tax_paid": "paid_so_far"},
+}
+
+
+def _extra_aliases(operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """Map common alternative parameter names onto the real ones."""
+    aliases = _EXTRA_ALIASES.get(operation, {})
+    out: Dict[str, Any] = {}
+    for key, value in params.items():
+        target = aliases.get(key, key)
+        if target in out:
+            if target == "other_capital_gains":
+                out[target] = float(out[target]) + float(value)
+            continue  # keep the explicitly named value
+        out[target] = value
+    return out
+
+
 class TaxCalcInput(BaseModel):
     operation: Literal["compute_tax", "compare_regimes", "hra_exemption", "house_property_income",
                        "capital_gains_tax", "advance_tax_plan", "itr_form_choice", "tax_saving_finder"] = Field(
@@ -122,24 +148,34 @@ class TaxCalcTool(BaseTool):
         )
         super().__init__()
 
-    async def execute(self, operation: str, params: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+    def check_arguments(self, args: Dict[str, Any]) -> Optional[str]:
+        """Parameter-name problems, reported at planning time so the planner can repair them."""
+        operation, params = args.get("operation"), args.get("params") or {}
         if operation in EXTRA_TAX_OPERATIONS:
             import inspect
 
-            fn = EXTRA_TAX_OPERATIONS[operation]
-            sig = inspect.signature(fn)
+            params = _extra_aliases(operation, params)
+            sig = inspect.signature(EXTRA_TAX_OPERATIONS[operation])
             unknown = set(params) - set(sig.parameters)
             if unknown:
-                raise FinanceInputError(f"Unknown parameter(s) for {operation}: {', '.join(sorted(unknown))}. "
-                                        f"Expected: {EXTRA_TAX_PARAMS[operation]}.")
+                return (f"Unknown parameter(s) for {operation}: {', '.join(sorted(unknown))}. "
+                        f"Expected: {EXTRA_TAX_PARAMS[operation]}.")
             missing = [n for n, p in sig.parameters.items() if p.default is inspect._empty and n not in params]
             if missing:
-                raise FinanceInputError(f"Missing parameter(s) for {operation}: {', '.join(missing)}.")
-            return fn(**params)
-        params = normalise_tax_params(params)
-        unknown = set(params) - _ALLOWED
+                return f"Missing parameter(s) for {operation}: {', '.join(missing)}."
+            return None
+        unknown = set(normalise_tax_params(params)) - _ALLOWED
         if unknown:
-            raise FinanceInputError(f"Unknown parameter(s): {', '.join(sorted(unknown))}. Expected: {TAX_PARAMS}.")
+            return f"Unknown parameter(s): {', '.join(sorted(unknown))}. Expected: {TAX_PARAMS}."
+        return None
+
+    async def execute(self, operation: str, params: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        problem = self.check_arguments({"operation": operation, "params": params})
+        if problem:
+            raise FinanceInputError(problem)
+        if operation in EXTRA_TAX_OPERATIONS:
+            return EXTRA_TAX_OPERATIONS[operation](**_extra_aliases(operation, params))
+        params = normalise_tax_params(params)
         clean = dict(params)
         if operation == "compare_regimes":
             clean.pop("regime", None)

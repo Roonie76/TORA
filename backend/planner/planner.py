@@ -247,6 +247,17 @@ class Planner:
                     thought=f"Plan rejected: arguments for tool '{clean_name}' failed validation: {str(e)}",
                 )
 
+            # 3. Tool-specific parameter checks (names / required inputs) so the repair loop can fix them
+            checker = getattr(tool, "check_arguments", None)
+            if callable(checker):
+                problem = checker(validated_args)
+                if problem:
+                    return ToolPlan(
+                        requires_tools=False,
+                        steps=[],
+                        thought=f"Plan rejected: arguments for tool '{clean_name}' failed validation: {problem}",
+                    )
+
             validated_steps.append(
                 ToolPlanStep(
                     tool_name=clean_name,

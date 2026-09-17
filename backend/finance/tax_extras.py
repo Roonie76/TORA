@@ -359,15 +359,15 @@ def tax_saving_finder(gross_salary: float, tax_year: Optional[str] = None, age_c
                       section_80ccd_1b: float = 0.0, home_loan_interest: float = 0.0,
                       rent_paid_monthly: float = 0.0, basic_monthly: float = 0.0, hra_received_monthly: float = 0.0,
                       metro: bool = False, savings_interest: float = 0.0, other_income: float = 0.0,
-                      current_regime: Optional[str] = None) -> Dict[str, Any]:
+                      current_regime: Optional[str] = None, hra_exempt_annual: float = 0.0) -> Dict[str, Any]:
     """Which regime is cheaper now, and what unused deductions could change that."""
     ty = tax_year or current_tax_year()
     if ty not in TAX_RULES:
         raise FinanceInputError(f"Tax rules for {ty} are not available.")
     caps = TAX_RULES[ty]["deduction_caps"]
     senior = age_category != "normal"
-    hra_exempt = 0.0
-    if rent_paid_monthly and basic_monthly and hra_received_monthly:
+    hra_exempt = _pos("hra_exempt_annual", hra_exempt_annual, allow_zero=True)
+    if not hra_exempt and rent_paid_monthly and basic_monthly and hra_received_monthly:
         hra_exempt = hra_exemption(basic_monthly, hra_received_monthly, rent_paid_monthly, metro=metro)["exempt_hra"]
     current = {"section_80c": section_80c, "section_80d_self": section_80d_self,
                "section_80d_parents": section_80d_parents, "section_80ccd_1b": section_80ccd_1b,
@@ -427,6 +427,7 @@ def tax_saving_finder(gross_salary: float, tax_year: Optional[str] = None, age_c
                     + (", still more than the new regime." if better_if_maxed == "new" else
                        f", which beats the new regime by {inr(new_tax - old_full)}.")),
         "assumptions": ["Savings shown are for the old regime; the new regime ignores these deductions.",
+                        "Professional tax and other small deductions are not included.",
                         "Only invest for tax if the product also suits your goals."],
     }
 
@@ -453,7 +454,7 @@ EXTRA_TAX_PARAMS = {
     "tax_saving_finder": "gross_salary, [tax_year], [age_category], [section_80c], [section_80d_self], "
                          "[section_80d_parents], [section_80ccd_1b], [home_loan_interest], [rent_paid_monthly], "
                          "[basic_monthly], [hra_received_monthly], [metro], [savings_interest], [other_income], "
-                         "[current_regime]",
+                         "[current_regime], [hra_exempt_annual]",
 }
 
 
