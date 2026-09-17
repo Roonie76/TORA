@@ -96,6 +96,23 @@ def _account_note() -> str:
             "about their recorded spending, say they need to sign in to Spendsy, or offer to work with figures they share.")
 
 
+# "forget my X" where nothing matching is stored: the answer must not claim a deletion.
+_FORGET_REQUEST = re.compile(
+    r"\b(?:forget|delete|remove|erase|wipe|clear)\b[^?.!]{0,40}\b(?:my|the|about\s+me)\b",
+    re.IGNORECASE,
+)
+
+
+def _forget_note(message: str, memory_commands: List[Dict[str, Any]]) -> str:
+    if not _FORGET_REQUEST.search(message or ""):
+        return ""
+    if any(c.get("action") in ("delete", "clear") for c in memory_commands):
+        return ""
+    return ("\n\n## Memory\n- The user asked you to forget something, but nothing matching it is stored. Say you "
+            "have nothing recorded for it and ask what exactly to remove. Never claim to have deleted or removed "
+            "anything.")
+
+
 _SMALL_TALK = re.compile(
     r"^\s*(?:hi+|hey+|hello+|namaste|good\s+(?:morning|afternoon|evening|night)|thanks?(?:\s+you)?|thank\s+you|"
     r"ok(?:ay)?|cool|great|bye|see\s+you|who\s+are\s+you|what\s+can\s+you\s+do|how\s+are\s+you)"
@@ -469,7 +486,7 @@ class ToraAgent:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
 
         # 3. Build Initial Context
-        account_note = _account_note() + _case_note(complexity)
+        account_note = _account_note() + _case_note(complexity) + _forget_note(message, memory_commands)
         if account_note:
             system_prompt = (system_prompt or self.default_system_prompt) + account_note
         messages = self._build_messages(

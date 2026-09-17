@@ -77,6 +77,19 @@ def _bisect(fn: Callable[[float], float], lo: float, hi: float, iters: int = 60)
 
 # ─────────────────────────────────────────────────────────────── prepay vs invest
 
+
+def _comparison_rows(options: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    rows = [
+        {"item": "Net worth at the loan's original end",
+         **{o["option"]: inr(o["net_worth_at_loan_end"]) for o in options}},
+        {"item": "Loan interest paid", **{o["option"]: inr(o["loan_interest_paid"]) for o in options}},
+        {"item": "Loan closes in", **{o["option"]: f"{o['loan_closes_in_months']} months" for o in options}},
+    ]
+    if any(o["investment_value_after_tax"] != o["net_worth_at_loan_end"] for o in options):
+        rows.append({"item": "Investments after tax",
+                     **{o["option"]: inr(o["investment_value_after_tax"]) for o in options}})
+    return rows
+
 def prepay_vs_invest(
     loan_balance: float,
     loan_rate: float,
@@ -168,6 +181,9 @@ def prepay_vs_invest(
                    "loan_tax_benefit_rate": benefit, "emergency_fund_ok": emergency_fund_ok},
         "current_emi": _r(payment),
         "options": options,
+        # Ready-made rows so the answer never has to relabel a figure. The investments row
+        # is dropped when it repeats net worth (once the loan is gone they are the same money).
+        "comparison": _comparison_rows(options),
         "recommended": recommended,
         "reason": reason,
         "confidence": confidence,

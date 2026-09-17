@@ -642,3 +642,15 @@ class TestChatRouteIntegration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_forget_note_only_when_nothing_matched():
+    """TORA must not claim to have deleted a fact it never had."""
+    from backend.agent.agent import _forget_note
+
+    assert "nothing matching it is stored" in _forget_note("forget my SIP", [])
+    assert "Never claim to have deleted" in _forget_note("please delete my rent", [])
+    assert _forget_note("forget my SIP", [{"action": "delete", "name": "sip_monthly"}]) == ""
+    assert _forget_note("I paid off my car loan", [{"name": "car_loan_emi", "closure": True}]) == ""
+    assert _forget_note("what is my rent?", []) == ""
+    assert _forget_note("how do I forget about money stress?", []) == ""

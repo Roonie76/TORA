@@ -4957,6 +4957,33 @@
       ]
     },
     {
+      "id": "forget-an-investment",
+      "category": "memory",
+      "description": "Forgetting a SIP actually removes it",
+      "turns": [
+        {
+          "user": "I invest 5k a month in a SIP",
+          "expect": {
+            "profile": {
+              "sip_monthly": 5000.0
+            }
+          }
+        },
+        {
+          "user": "forget my SIP",
+          "answer": "Done — I have removed your monthly SIP from what I remember.",
+          "expect": {
+            "intent": [
+              "memory_delete"
+            ],
+            "profile": {
+              "sip_monthly": null
+            }
+          }
+        }
+      ]
+    },
+    {
       "id": "debt-shortfall",
       "category": "debt",
       "description": "Income can't cover minimums",

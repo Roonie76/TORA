@@ -100,3 +100,20 @@ def test_tax_questions_do_not_become_salary(message, expected):
 def test_planner_prompt_passes_named_tax_years():
     from backend.prompts.planner import get_planner_system_prompt
     assert "pass it as 'tax_year' exactly" in get_planner_system_prompt([])
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("forget my SIP", {"sip_monthly"}),
+    ("please forget my sip", {"sip_monthly"}),
+    ("delete my PPF", {"ppf"}),
+    ("forget my fixed deposit", {"fixed_deposit"}),
+    ("forget my essentials", {"essential_expenses"}),
+    ("forget my insurance premium", {"insurance_premium"}),
+    ("forget my stocks", {"stocks"}),
+    ("forget my rent", {"rent"}),
+])
+def test_forget_covers_every_remembered_kind(message, expected):
+    """TORA must not say it forgot something it still remembers."""
+    from backend.context.extractor import extract_memory_commands
+    names = {c["name"] for c in extract_memory_commands(message) if c.get("action") == "delete"}
+    assert names == expected
