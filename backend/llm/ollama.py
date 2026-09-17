@@ -246,6 +246,8 @@ class OllamaProvider(LLMProvider):
             payload["format"] = options["format"]
 
         think = _think_setting()
+        if options and isinstance(options.get("think"), bool):
+            think = options["think"]
         if think is not None and target_model not in self._no_think_models:
             payload["think"] = think
 

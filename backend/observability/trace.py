@@ -49,6 +49,7 @@ class TurnTrace:
         "calls": 0, "ms": 0.0, "prompt_tokens": 0, "completion_tokens": 0, "model": None})
     prompt_tokens_estimate: Optional[int] = None
     model_facts: int = 0
+    complexity: Optional[Dict[str, Any]] = None
     overflow_retry: bool = False
     grounding: Optional[Dict[str, Any]] = None
     status: str = "in_progress"
@@ -128,6 +129,8 @@ class TelemetryHub:
             self.completion_tokens = 0
             self.overflow_retries = 0
             self.planner_skipped = 0
+            self.fast_path = 0
+            self.complexity = defaultdict(int)
             self._recent.clear()
 
     def finish(self, trace: TurnTrace, status: str = "ok", http_status: int = 200,
@@ -157,6 +160,10 @@ class TelemetryHub:
             self.overflow_retries += int(trace.overflow_retry)
             if trace.intent and not trace.planner.get("used"):
                 self.planner_skipped += 1
+            if trace.planner.get("fast_path"):
+                self.fast_path += 1
+            if trace.complexity:
+                self.complexity[trace.complexity.get("level", "unknown")] += 1
             self._recent.append(data)
             if self.trace_file:
                 try:
@@ -184,6 +191,8 @@ class TelemetryHub:
                                "max": max(lat) if lat else None, "samples": len(lat)},
                 "intents": dict(self.intents),
                 "planner_skipped": self.planner_skipped,
+                "fast_path": self.fast_path,
+                "complexity": dict(self.complexity),
                 "tools": {
                     name: {"ok": c.get("ok", 0), "error": c.get("error", 0),
                            "p50_ms": _percentile(list(self.tool_ms[name]), 50),

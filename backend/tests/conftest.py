@@ -2,6 +2,8 @@ import os
 
 # Tests never touch the on-disk session database.
 os.environ.setdefault("TORA_SESSION_DB", ":memory:")
+# Most agent tests script the planner's reply; the Phase 7 fast path has its own tests.
+os.environ.setdefault("TORA_FAST_PATH", "off")
 
 import pytest
 

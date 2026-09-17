@@ -197,10 +197,17 @@ class EvalHarness:
     async def _run_scenario_inner(self, scenario: Dict[str, Any]) -> ScenarioResult:
         identity = Identity(user_id="eval-user", token="eval-token") if scenario.get("signed_in") else None
         token = set_current_identity(identity)
+        previous_fast = os.environ.get("TORA_FAST_PATH")
+        # Production default is on; scenarios that exercise the LLM planner itself opt out.
+        os.environ["TORA_FAST_PATH"] = "off" if scenario.get("fast_path") is False else "on"
         try:
             return await self._run_turns(scenario)
         finally:
             reset_current_identity(token)
+            if previous_fast is None:
+                os.environ.pop("TORA_FAST_PATH", None)
+            else:
+                os.environ["TORA_FAST_PATH"] = previous_fast
 
     async def _run_turns(self, scenario: Dict[str, Any]) -> ScenarioResult:
         registry = self._registry()
@@ -275,6 +282,12 @@ class EvalHarness:
             add("tools", tools == expect["tools"], f"got {tools}, expected {expect['tools']}")
         if "tools_include" in expect:
             add("tools_include", all(t in tools for t in expect["tools_include"]), f"got {tools}")
+        if "fast_path" in expect:
+            got_fast = bool(response.plan is not None and (response.plan.thought or "").startswith("fast path"))
+            add("fast_path", got_fast == expect["fast_path"], f"got {got_fast}")
+        if "complexity" in expect:
+            got_level = getattr(getattr(response, "complexity", None), "level", None)
+            add("complexity", got_level == expect["complexity"], f"got {got_level}")
         if "planner_called" in expect:
             add("planner_called", planner_called == expect["planner_called"], f"got {planner_called}")
         if "tool_ok" in expect:

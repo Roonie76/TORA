@@ -322,7 +322,8 @@ class TestToraAgent(unittest.IsolatedAsyncioTestCase):
             tool_executor=executor,
         )
 
-        response = await tora_agent.run(message="Hello!")
+        # Plain greetings skip the planner (Phase 7); a conceptual question still goes through it.
+        response = await tora_agent.run(message="Explain how recursion works")
 
         self.assertEqual(response.content, "Hello! How can I help you today?")
         self.assertIsNotNone(response.plan)

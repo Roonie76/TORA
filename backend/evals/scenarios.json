@@ -2578,7 +2578,8 @@
             "planner_called": true
           }
         }
-      ]
+      ],
+      "fast_path": false
     },
     {
       "id": "calc-grounded-answer",
@@ -4609,6 +4610,187 @@
             "profile": {
               "rent": 25000.0
             },
+            "planner_called": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-emi-fast",
+      "category": "routing",
+      "description": "EMI goes straight to the calculator",
+      "turns": [
+        {
+          "user": "EMI on 30 lakh loan at 8.4% for 25 yrs",
+          "expect": {
+            "fast_path": true,
+            "planner_called": false,
+            "tools": [
+              "finance_calc"
+            ],
+            "complexity": "simple",
+            "tool_output": {
+              "finance_calc.emi": 23954.98
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-tax-fast",
+      "category": "routing",
+      "description": "Simple salary tax goes straight to tax_calc",
+      "turns": [
+        {
+          "user": "How much tax on a 12.75 lakh salary this year?",
+          "expect": {
+            "fast_path": true,
+            "planner_called": false,
+            "tools": [
+              "tax_calc"
+            ],
+            "tool_output": {
+              "tax_calc.total_tax": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-tax-deductions-planner",
+      "category": "routing",
+      "description": "Tax with deductions still uses the planner",
+      "turns": [
+        {
+          "user": "Tax on 10 lakh salary with 1.5 lakh 80C under old regime?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "compute_tax",
+                  "params": {
+                    "gross_salary": 1000000,
+                    "regime": "old",
+                    "deductions": {
+                      "section_80c": 150000
+                    },
+                    "tax_year": "2026-27"
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "fast_path": false,
+            "planner_called": true,
+            "tool_output": {
+              "tax_calc.total_tax": 75400
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-followup-planner",
+      "category": "routing",
+      "description": "Follow-up about 'that loan' uses the planner",
+      "turns": [
+        {
+          "user": "EMI on 20 lakh at 8.5% for 20 years",
+          "expect": {
+            "fast_path": true
+          }
+        },
+        {
+          "user": "If I prepay 5000 extra every month on that loan, how much interest do I save?",
+          "plan": {
+            "thought": "prepay",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "amortization",
+                  "params": {
+                    "principal": 2000000,
+                    "annual_rate": 8.5,
+                    "tenure_months": 240,
+                    "extra_monthly": 5000
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "fast_path": false,
+            "planner_called": true,
+            "tools": [
+              "finance_calc"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-greeting",
+      "category": "routing",
+      "description": "Greeting skips all tools and the planner",
+      "turns": [
+        {
+          "user": "Hi TORA, how are you?",
+          "expect": {
+            "planner_called": false,
+            "tools": [],
+            "complexity": "simple"
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-complex",
+      "category": "routing",
+      "description": "Multi-debt decision is sized as complex",
+      "turns": [
+        {
+          "user": "I have 3 loans: personal 3 lakh at 14%, card 1.5 lakh at 42%, car 4 lakh at 9%. I can pay 35k a month. Should I consolidate or pay off the card first? What's the best strategy?",
+          "expect": {
+            "complexity": "complex",
+            "planner_called": true,
+            "system_contains": [
+              "## This Case"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-sip-fast",
+      "category": "routing",
+      "description": "SIP future value fast path",
+      "turns": [
+        {
+          "user": "If I invest 10,000 a month for 10 years at 12%, what will I have?",
+          "expect": {
+            "fast_path": true,
+            "tool_output": {
+              "finance_calc.future_value": 2323391.0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "route-ambiguous-emi",
+      "category": "routing",
+      "description": "Two loans in one message go to the planner",
+      "turns": [
+        {
+          "user": "EMI for 5 lakh at 10% for 3 years and 7 lakh at 9% for 5 years?",
+          "expect": {
+            "fast_path": false,
             "planner_called": true
           }
         }

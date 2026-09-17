@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import Optional, List, Dict, Any, Union
 from dataclasses import dataclass
 
@@ -12,6 +13,7 @@ from ..llm.base import (
 from ..prompts.tora import TORA_SYSTEM_PROMPT
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
+from ..planner.fast_path import Complexity, assess_complexity, fast_plan
 from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
@@ -75,6 +77,37 @@ def _account_note() -> str:
     return ("\n\n## Account\n- The user is not signed in, so you cannot see their Spendsy transactions. If they ask "
             "about their recorded spending, say they need to sign in to Spendsy, or offer to work with figures they share.")
 
+
+_SMALL_TALK = re.compile(
+    r"^\s*(?:hi+|hey+|hello+|namaste|good\s+(?:morning|afternoon|evening|night)|thanks?(?:\s+you)?|thank\s+you|"
+    r"ok(?:ay)?|cool|great|bye|see\s+you|who\s+are\s+you|what\s+can\s+you\s+do|how\s+are\s+you)"
+    r"(?:[\s,!.?]+(?:tora|there|so\s+much|a\s+lot|how\s+are\s+you(?:\s+doing)?|doing|today))*[\s!.?]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_small_talk(message: str, intent: Any) -> bool:
+    """Greetings and thanks never need tools; skipping the planner saves a full model call."""
+    return intent.intent == Intent.GENERAL_QA and bool(_SMALL_TALK.match(message or ""))
+
+
+def _complex_think() -> bool:
+    return os.getenv("TORA_COMPLEX_THINK", "off").strip().lower() in ("1", "on", "true", "yes")
+
+
+def _fast_path_enabled() -> bool:
+    return os.getenv("TORA_FAST_PATH", "on").strip().lower() not in ("0", "off", "false", "no")
+
+
+def _case_note(complexity: Optional[Complexity]) -> str:
+    """Scale the answer style with the case (Phase 7)."""
+    if complexity is None or not complexity.is_complex:
+        return ""
+    return ("\n\n## This Case\n- This is a multi-factor decision. Work like a senior CA: state the key facts you are "
+            "using, compare two or three realistic options with their rupee impact (use only tool figures or clearly "
+            "labelled assumptions), recommend one with the reason, name the main risk, and list what the user should "
+            "confirm. Ask for any missing fact that would change the recommendation.")
+
 @dataclass
 
 class AgentResponse:
@@ -87,6 +120,7 @@ class AgentResponse:
     financial_profile: Optional[FinancialProfile] = None
     intent: Optional[IntentResult] = None
     grounding: Optional[Dict[str, Any]] = None
+    complexity: Optional[Any] = None
 
 
 class ToraAgent:
@@ -260,7 +294,47 @@ class ToraAgent:
             # Stored research already answers this follow-up; no new web calls.
             skip_planner = True
 
+        if not skip_planner and _is_small_talk(message, intent):
+            skip_planner = True
+
+        # Phase 7: clear-cut requests get a direct plan; effort scales with the case.
+        fast: Optional[ToolPlan] = None
         if (
+            not skip_planner
+            and self._planner is not None
+            and tool_context is None
+            and _fast_path_enabled()
+            and not intent.is_followup
+            and intent.intent in (Intent.CALCULATION, Intent.FINANCIAL_QA, Intent.WHAT_IF,
+                                  Intent.PLANNING, Intent.GENERAL_QA)
+        ):
+            candidate = fast_plan(message, intent, {t.name for t in self._planner._usable_tools()})
+            if candidate is not None:
+                checked = self._planner._validate_and_sanitize_plan(candidate)
+                if checked.requires_tools and checked.steps:
+                    fast = checked
+        fact_count = (
+            sum(1 for _ in active_profile.iter_current_facts())
+            if isinstance(active_profile, FinancialProfile) else 0
+        )
+        complexity = assess_complexity(message, intent, fast=fast, known_fact_count=fact_count)
+        if trace is not None:
+            trace.complexity = {"level": complexity.level, "score": complexity.score}
+        effort_model = model
+        if complexity.is_complex and not model and os.getenv("TORA_COMPLEX_MODEL", "").strip():
+            effort_model = os.getenv("TORA_COMPLEX_MODEL").strip()
+
+        if fast is not None and self._tool_executor is not None:
+            executed_plan = fast
+            if trace is not None:
+                trace.planner = {
+                    "used": False,
+                    "fast_path": True,
+                    "requires_tools": True,
+                    "steps": [st.tool_name for st in fast.steps],
+                    "rewritten_query": False,
+                }
+        elif (
             self._planner is not None
             and self._tool_executor is not None
             and tool_context is None
@@ -277,7 +351,7 @@ class ToraAgent:
             executed_plan = await self._planner.plan(
                 message=planner_message,
                 context=context,
-                model=model,
+                model=effort_model,
                 known_facts=known_facts,
             )
             if trace is not None:
@@ -294,39 +368,42 @@ class ToraAgent:
                 len(executed_plan.steps),
             )
 
-            if executed_plan.requires_tools and executed_plan.steps:
-                steps_to_execute = executed_plan.steps[: self.max_tool_steps]
-                if len(executed_plan.steps) > self.max_tool_steps:
-                    logger.warning(
-                        "Plan steps (%d) exceeded MAX_TOOL_STEPS (%d); capping execution.",
-                        len(executed_plan.steps),
-                        self.max_tool_steps,
-                    )
+        if (
+            executed_plan is not None and self._tool_executor is not None
+            and executed_plan.requires_tools and executed_plan.steps
+        ):
+            steps_to_execute = executed_plan.steps[: self.max_tool_steps]
+            if len(executed_plan.steps) > self.max_tool_steps:
+                logger.warning(
+                    "Plan steps (%d) exceeded MAX_TOOL_STEPS (%d); capping execution.",
+                    len(executed_plan.steps),
+                    self.max_tool_steps,
+                )
 
-                for step_idx, step in enumerate(steps_to_execute):
-                    logger.info("Executing tool step %d/%d: %s", step_idx + 1, len(steps_to_execute), step.tool_name)
-                    tool_result = await self._tool_executor.execute(
-                        tool_name=step.tool_name,
-                        arguments=step.arguments,
-                        call_id=step.call_id or f"step_{step_idx + 1}",
-                    )
-                    effective_tool_context = self._tool_executor.to_tool_context(
-                        tool_result=tool_result,
-                        existing_context=effective_tool_context,
-                    )
-                    if trace is not None:
-                        trace.tools.append({
-                            "name": tool_result.tool_name,
-                            "ok": tool_result.success,
-                            "ms": tool_result.metadata.get("duration_ms"),
-                            "error": None if tool_result.success else (tool_result.error or "")[:120],
-                        })
+            for step_idx, step in enumerate(steps_to_execute):
+                logger.info("Executing tool step %d/%d: %s", step_idx + 1, len(steps_to_execute), step.tool_name)
+                tool_result = await self._tool_executor.execute(
+                    tool_name=step.tool_name,
+                    arguments=step.arguments,
+                    call_id=step.call_id or f"step_{step_idx + 1}",
+                )
+                effective_tool_context = self._tool_executor.to_tool_context(
+                    tool_result=tool_result,
+                    existing_context=effective_tool_context,
+                )
+                if trace is not None:
+                    trace.tools.append({
+                        "name": tool_result.tool_name,
+                        "ok": tool_result.success,
+                        "ms": tool_result.metadata.get("duration_ms"),
+                        "error": None if tool_result.success else (tool_result.error or "")[:120],
+                    })
 
         if conversation_state is not None:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
 
         # 3. Build Initial Context
-        account_note = _account_note()
+        account_note = _account_note() + _case_note(complexity)
         if account_note:
             system_prompt = (system_prompt or self.default_system_prompt) + account_note
         messages = self._build_messages(
@@ -347,6 +424,9 @@ class ToraAgent:
             options["num_predict"] = max_answer_tokens
         if temperature is not None:
             options["temperature"] = temperature
+        if complexity.is_complex and _complex_think():
+            options["think"] = True  # deeper reasoning only where the case needs it
+        model = effort_model
 
         # Observability logging (metadata only, no private values)
         input_token_est = estimate_messages_tokens(messages)
@@ -474,6 +554,7 @@ class ToraAgent:
             financial_profile=active_profile if isinstance(active_profile, FinancialProfile) else None,
             intent=intent,
             grounding=grounding,
+            complexity=complexity,
         )
 
     async def _ground(
