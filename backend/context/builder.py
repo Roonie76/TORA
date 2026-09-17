@@ -222,10 +222,12 @@ class ContextBuilder:
         # The user's own Spendsy records (Phase 6B)
         if res.tool_name == "spendsy_data" and isinstance(res.output, dict):
             out = res.output
+            from ..finance.engine import inr
+
             if out.get("operation") == "recent_transactions":
                 lines = [f"- Spendsy records: {out.get('count', 0)} recent transactions since {out.get('since')}"]
                 for t in out.get("transactions", []):
-                    lines.append(f"  {t['date']} {t['kind']} Rs {t['amount']:,.2f} [{t['category']}] {t['description']}")
+                    lines.append(f"  {t['date']} {t['kind']} {inr(t['amount'])} [{t['category']}] {t['description']}")
                 return "\n".join(lines)
             period = out.get("period", {})
             lines = [
@@ -236,6 +238,10 @@ class ContextBuilder:
                 f"average_monthly_income={out.get('average_monthly_income')}, "
                 f"average_monthly_expenses={out.get('average_monthly_expenses')}, savings_rate_pct={out.get('savings_rate_pct')}",
             ]
+            if period.get("current_month_partial"):
+                lines.append(f"  Note: {period.get('to_month')} is the current month and is not complete yet.")
+            lines.append(f"  (Indian format: income {inr(out.get('total_income') or 0)}, "
+                         f"expenses {inr(out.get('total_expenses') or 0)}, net {inr(out.get('net') or 0)})")
             for m in out.get("by_month", []):
                 lines.append(f"  {m['month']}: income={m['income']}, expenses={m['expenses']}, net={m['net']}")
             for c in out.get("top_categories", []) or []:
