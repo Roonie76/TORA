@@ -148,7 +148,7 @@ class TestTool:
         assert r.success and r.data["tax_year"] == current_tax_year()
 
     def test_tool_rejects_unknown_params(self):
-        r = asyncio.run(TaxCalcTool().run({"operation": "compute_tax", "params": {"salary": 1}}))
+        r = asyncio.run(TaxCalcTool().run({"operation": "compute_tax", "params": {"bonus_points": 1}}))
         assert not r.success and "Unknown parameter" in r.error
 
     def test_compare_ignores_regime_param(self):
@@ -163,3 +163,21 @@ class TestTool:
         assert "tax_calc' (compare_regimes)" in msgs[0]["content"]
         assert "new_regime:" in msgs[0]["content"]
         assert len(msgs) == 2
+
+
+def test_tax_tool_accepts_flat_deductions_from_the_planner():
+    """Live run T3: the model passed 80C / 80D / home-loan interest at the top level."""
+    import asyncio
+    from backend.tools import TaxCalcTool
+
+    res = asyncio.run(TaxCalcTool().run({"operation": "compare_regimes", "params": {
+        "gross_salary": 1800000, "section_80c": 150000, "section_80d_self": 25000,
+        "home_loan_interest": 200000, "tax_year": "2026-27"}}))
+    assert res.success, res.error
+    assert res.data["new_regime"]["total_tax"] == 150800
+    assert res.data["old_regime"]["total_tax"] == 234000
+
+    alias = asyncio.run(TaxCalcTool().run({"operation": "compute_tax", "params": {
+        "gross_salary": 1000000, "regime": "old", "deductions": [{"section": "80C", "amount": 150000}],
+        "tax_year": "2026-27"}}))
+    assert alias.success and alias.data["total_tax"] == 75400

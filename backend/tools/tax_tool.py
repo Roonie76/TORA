@@ -12,6 +12,55 @@ _ALLOWED = {"gross_salary", "other_income", "regime", "tax_year", "age_category"
             "stcg_equity", "ltcg_equity", "ltcg_other"}
 
 
+_DEDUCTION_KEYS = {"section_80c", "section_80d_self", "section_80d_parents", "section_80ccd_1b",
+                   "home_loan_interest", "savings_interest", "employer_nps"}
+# Common spellings a model (or person) uses for the same deductions.
+_DEDUCTION_ALIASES = {
+    "80c": "section_80c", "section80c": "section_80c", "sec_80c": "section_80c",
+    "80d": "section_80d_self", "section_80d": "section_80d_self", "section80d": "section_80d_self",
+    "80d_self": "section_80d_self", "80d_parents": "section_80d_parents",
+    "80ccd_1b": "section_80ccd_1b", "80ccd1b": "section_80ccd_1b", "section_80ccd": "section_80ccd_1b", "nps": "section_80ccd_1b",
+    "home_loan": "home_loan_interest", "housing_loan_interest": "home_loan_interest", "section_24": "home_loan_interest",
+    "section_24b": "home_loan_interest", "interest_on_home_loan": "home_loan_interest",
+    "80tta": "savings_interest", "80ttb": "savings_interest",
+    "salary": "gross_salary", "annual_salary": "gross_salary",
+}
+
+
+def _canonical(key: str) -> str:
+    k = str(key).strip().lower().replace(" ", "_").replace("-", "_")
+    return _DEDUCTION_ALIASES.get(k, k)
+
+
+def normalise_tax_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Fold deduction amounts given at the top level (or under other names) into `deductions`."""
+    clean: Dict[str, Any] = {}
+    deductions: Dict[str, Any] = {}
+    raw_deductions = params.get("deductions")
+    if isinstance(raw_deductions, dict):
+        for k, v in raw_deductions.items():
+            deductions[_canonical(k)] = v
+    elif isinstance(raw_deductions, list):  # [{"section": "80c", "amount": 150000}]
+        for item in raw_deductions:
+            if isinstance(item, dict):
+                name = item.get("section") or item.get("name")
+                if name is not None and "amount" in item:
+                    deductions[_canonical(name)] = item["amount"]
+    for key, value in params.items():
+        if key == "deductions":
+            continue
+        canon = _canonical(key)
+        if canon in _DEDUCTION_KEYS:
+            deductions[canon] = value
+        elif canon == "gross_salary" and "gross_salary" in params and key != "gross_salary":
+            continue
+        else:
+            clean[canon] = value
+    if deductions:
+        clean["deductions"] = deductions
+    return clean
+
+
 class TaxCalcInput(BaseModel):
     operation: Literal["compute_tax", "compare_regimes"] = Field(
         ..., description="compute_tax for one regime, compare_regimes for new vs old."
@@ -37,6 +86,7 @@ class TaxCalcTool(BaseTool):
         super().__init__()
 
     async def execute(self, operation: str, params: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        params = normalise_tax_params(params)
         unknown = set(params) - _ALLOWED
         if unknown:
             raise FinanceInputError(f"Unknown parameter(s): {', '.join(sorted(unknown))}. Expected: {TAX_PARAMS}.")
