@@ -68,3 +68,15 @@ def test_other_users_cannot_rate(client, monkeypatch):
                     headers={"Authorization": "Bearer tb"})
     assert r.status_code == 404
     main_module.session_store.delete_user_data("alice")
+
+
+@pytest.mark.parametrize("value", ["", " ", "0", "off", "OFF", "no", "false", "none", "disabled"])
+def test_training_log_stays_off_for_disabling_values(monkeypatch, value):
+    monkeypatch.setenv("TORA_TRAINING_LOG", value)
+    assert training_log.log_path() is None
+
+
+def test_training_log_accepts_a_real_path(monkeypatch, tmp_path):
+    target = tmp_path / "training.jsonl"
+    monkeypatch.setenv("TORA_TRAINING_LOG", str(target))
+    assert training_log.log_path() == str(target)

@@ -104,9 +104,30 @@ _SMALL_TALK = re.compile(
 )
 
 
+# "Hi TORA! I'm Ravi, 32, working in Pune." A greeting plus a short introduction.
+_INTRODUCTION = re.compile(
+    r"^\s*(?:(?:hi+|hey+|hello+|namaste)(?:[\s,!.]+tora)?[\s,!.]+)?"
+    r"(?:i'?m|i\s+am|my\s+name\s+is|this\s+is)\s+[a-z]+(?:\s+[a-z]+)?"
+    r"(?:(?:[\s,.]+|\s+and\s+)(?:\d{2}(?:\s*(?:years?|yrs?)(?:\s+old)?)?"
+    r"|(?:i\s+)?(?:am\s+)?(?:work(?:ing)?|live|living|based|from|staying)(?:\s+(?:in|at|as|from|for))?\s+[a-z][a-z .&-]{0,40}?))*"
+    r"[\s!.]*$",
+    re.IGNORECASE,
+)
+_FINANCE_WORDS = re.compile(
+    r"\b(?:debts?|loans?|emis?|tax|salary|income|earn|invest\w*|sips?|cards?|money|rent|sav\w*|budget|"
+    r"stress\w*|broke|lakh|crore|spend\w*|bills?|dues?|insurance|funds?|stocks?)\b|₹|\d{3,}",
+    re.IGNORECASE,
+)
+
+
 def _is_small_talk(message: str, intent: Any) -> bool:
-    """Greetings and thanks never need tools; skipping the planner saves a full model call."""
-    return intent.intent == Intent.GENERAL_QA and bool(_SMALL_TALK.match(message or ""))
+    """Greetings, thanks and introductions never need tools; skipping the planner saves a full model call."""
+    if intent.intent != Intent.GENERAL_QA:
+        return False
+    text = message or ""
+    if _SMALL_TALK.match(text):
+        return True
+    return len(text) <= 120 and not _FINANCE_WORDS.search(text) and bool(_INTRODUCTION.match(text))
 
 
 def _complex_think() -> bool:

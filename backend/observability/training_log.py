@@ -26,9 +26,14 @@ _lock = threading.Lock()
 MAX_TOOL_CHARS = 4000
 
 
+# Words people naturally use to switch the log off. Without this, TORA_TRAINING_LOG="off"
+# would be taken as a file name and a file called "off" would quietly collect turns.
+DISABLED_VALUES = {"", "0", "off", "no", "false", "none", "disabled"}
+
+
 def log_path() -> Optional[str]:
     path = os.getenv("TORA_TRAINING_LOG", "").strip()
-    return path or None
+    return None if path.lower() in DISABLED_VALUES else path
 
 
 def _mask(text: Optional[str]) -> str:

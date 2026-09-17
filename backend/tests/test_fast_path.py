@@ -168,3 +168,23 @@ def test_hra_fast_path(message, expected):
 
 def test_hra_yearly_figures_go_to_planner():
     assert fast_plan("basic 6 lakh a year, hra 2.4 lakh, rent 3 lakh a year, how much hra exempt") is None
+
+
+def test_introductions_skip_the_planner():
+    general = IntentResult(Intent.GENERAL_QA, [], None)
+    for text in (
+        "Hi TORA! I'm Ravi, 32, working in Pune.",
+        "hello, my name is Asha Rao",
+        "I am Priya, 28 years old and I live in Chennai",
+        "Hey I'm Arjun from Bangalore",
+    ):
+        assert _is_small_talk(text, general), text
+    for text in (
+        "Hi, I'm Ravi and I have 2 lakh of debt",
+        "I'm stressed about my loans",
+        "hi I'm in debt",
+        "I'm Ravi, I earn 50000",
+        "I am confused, what is an ELSS fund?",
+        "Hi I'm Ravi. Should I prepay my loan?",
+    ):
+        assert not _is_small_talk(text, general), text

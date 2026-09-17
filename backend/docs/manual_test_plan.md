@@ -1,6 +1,6 @@
 # TORA Manual Test Plan
 
-Covers the re-audit fixes, Phase 3 (conversations, Memory 2.0, finance engine), Phase 4 (benchmark, answer verification, tax, planning, monitoring), Phase 5 (Hinglish/typos, planner reliability, model-assisted memory) and Phase 6 (accounts and Spendsy data).
+Covers the re-audit fixes, Phase 3 (conversations, Memory 2.0, finance engine), Phase 4 (benchmark, answer verification, tax, planning, monitoring), Phase 5 (Hinglish/typos, planner reliability, model-assisted memory), Phase 6 (accounts and Spendsy data), Phases 7-13 (fast path, debt rescue, advice engine, rules library, documents, tax extras, feedback) and Phase 14 (streaming replies and the new chat UI).
 An interactive version with pass/fail tracking is published as the *TORA Test Runbook* artifact. Start with the browser walkthrough.
 
 ## Setup
@@ -57,7 +57,7 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- 993 passed, 0 failed (warnings from FastAPI/anyio are fine)
+- 1010 passed, 0 failed (warnings from FastAPI/anyio are fine)
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -341,10 +341,10 @@ window.trace = () => fetch('http://127.0.0.1:8000/api/traces?limit=1').then(r =>
 
 **Expect**
 
-- 1 → bubble: “Unable to reach TORA… Make sure FastAPI is running on port 8000 and Ollama is active.”
-- 2 → 4th bubble: “TORA couldn't answer (429): Too many requests…” (set the limit back to 0 afterwards)
+- 1 → bubble: “Unable to reach TORA… Make sure the TORA server is running on port 8000 and Ollama is active.” with a Try again button
+- 2 → 4th reply: “TORA couldn't answer (429): Too many requests…” plus the line about waiting a moment (set the limit back to 0 afterwards)
 - 3 → no error; TORA answers in a new conversation (new id in localStorage)
-- 4 → messages wrap, input usable, no sideways scrolling
+- 4 → messages wrap, composer usable, no sideways scrolling; tables inside a reply scroll on their own
 - 5 → counts for requests, intents, tools, latency and grounding reflect this session
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
@@ -2191,6 +2191,179 @@ Off by default. Enable only with users' consent.
 
 **Expect**
 
-- 993 unit tests, offline benchmark (155/155) and rules check all pass: RELEASE GATE: PASSED
+- 1010 unit tests, offline benchmark (155/155) and rules check all pass: RELEASE GATE: PASSED
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Streaming replies and the chat UI (Phase 14)
+
+The chat page now streams: POST /api/chat/stream sends stage / complexity / tool / token / replace events and ends with final (the same body /api/chat returns) or error. The React page shows live steps, engine chips, verification and follow-up chips.
+
+### V1 — The stream carries stages, tools and tokens
+
+**Do**
+
+1. `curl -N -s -X POST http://127.0.0.1:8000/api/chat/stream -H 'Content-Type: application/json' -d '{"message":"EMI on 30 lakh at 8.4% for 25 years"}'`
+
+**Expect**
+
+- Events arrive in order: stage(understanding) → complexity → stage(calculating) → tool(running) → tool(done) → stage(writing) → many token events → stage(checking) → final
+- Every stage event has a human label such as “Running the numbers”
+- The tool done event carries a one-line summary with the EMI figure
+- Joining all token texts equals final.response (unless a replace event arrived — then the last replace wins)
+- ': keep-alive' comments appear if a step takes longer than 15s
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V2 — Answers that fail the figure check are replaced, not patched
+
+**Do**
+
+1. `Ask a money question that makes the model guess, e.g. tora 'How much tax on 12 lakh salary with 1.5 lakh 80C?'`
+2. `Watch the stream (V1 command) for a replace event`
+
+**Expect**
+
+- If grounding rewrites the answer, one replace event carries the full corrected text and reason 'regenerated'
+- The UI swaps the text in place — no duplicated paragraphs
+- final.grounding.action is none / regenerated / annotated
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V3 — Live steps in the UI
+
+**Do**
+
+1. `Open the TORA page and ask: 'I earn 88k, pay 22k rent and owe 1.2 lakh on a card at 40% plus a 2.5 lakh personal loan at 15%. How do I get out of debt?'`
+
+**Expect**
+
+- A working panel appears at once: a spinner, “Working on your answer”, a live timer and a tick against each finished step
+- Engines show under their step (“Finance engine · debt rescue plan — …”)
+- For a complex case, a line warns it can take a few minutes
+- When the text starts, the panel collapses to one line and the answer streams in smoothly
+- When it finishes the line reads “Worked through N steps in Xs” and can be expanded again
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V4 — Stop and try again
+
+**Do**
+
+1. `Ask anything, and while it is writing press the Stop button (or Esc)`
+2. `Then click Try again on the same reply`
+
+**Expect**
+
+- The reply stops immediately, keeps the partial text and says it wasn't saved to the conversation
+- GET /api/conversations/<id> shows no turn for the cancelled question
+- Try again re-sends the same question without adding a second copy of your message
+- The next question still works in the same conversation
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V5 — Formatting in replies
+
+**Do**
+
+1. `Ask for a comparison, e.g. 'Compare avalanche and snowball for my two debts in a table'`
+
+**Expect**
+
+- Tables render as tables, with rupee columns right aligned and scrollable on a phone
+- Headings, bold, bullets, numbered steps and quotes render (no stray ** or | characters)
+- Any URL in the answer opens in a new tab; raw HTML in an answer is shown as text, never rendered
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V6 — Engine and verification chips
+
+**Do**
+
+1. `Ask a tax question with figures, e.g. 'What is my tax on 14 lakh salary under the new regime?'`
+
+**Expect**
+
+- Chips under the answer name the engines used (Tax engine, Rules library, …)
+- A green chip reads “N figures checked” when grounding passed, “Figures corrected” after a rewrite
+- An amber “Some figures unverified” chip appears only when the answer was annotated
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V7 — Follow-up chips and the empty state
+
+**Do**
+
+1. `Reset the chat`
+2. `Click one of the four starter cards`
+3. `After the answer, click a follow-up chip`
+
+**Expect**
+
+- The starter card sends that question
+- Follow-up chips appear only under the latest answer and disappear while TORA is working
+- Clicking a chip sends it in the same conversation
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V8 — Keyboard, scrolling and phone layout
+
+**Do**
+
+1. `Type a long multi-line question with Shift+Enter, then send with Enter`
+2. `While a reply streams, scroll up; then click the “TORA is replying” button`
+3. `Resize the window to 390px wide (or open on a phone)`
+
+**Expect**
+
+- Shift+Enter adds a line and the box grows (up to ~200px) instead of sending
+- Scrolling up stops the auto-follow; the button returns to the latest message
+- At phone width nothing overflows sideways; the composer and chips stay usable
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V9 — Errors are readable and recoverable
+
+**Do**
+
+1. `Stop the backend and send a message`
+2. `Start it again and click Try again`
+3. `With the backend up, delete the conversation on the server (DELETE /api/conversations/<id>) and send another message`
+
+**Expect**
+
+- Offline: “Unable to reach TORA: …” with a Try again button (not a blank bubble)
+- Try again answers normally once the server is back
+- A deleted conversation is detected and TORA silently starts a new one instead of failing
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V10 — Reduced motion and screen readers
+
+**Do**
+
+1. `Turn on “Reduce motion” in the OS, reload and send a question`
+2. `With a screen reader, listen while a reply streams`
+
+**Expect**
+
+- No shimmer, typewriter or slide animations; text appears immediately
+- The working line is announced as it changes (it is a live region)
+- The steps panel toggle is reachable by keyboard and announces show/hide
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### V11 — Load and robustness suite
+
+**Do**
+
+1. `python -m backend.stress.load_test --json load_report.json`
+
+**Expect**
+
+- All six scenarios PASS: throughput, isolation, same_conversation, cancel, rate_limit, fuzz
+- throughput: 600 turns, no errors and no wrong answers
+- isolation: no problems (users never see each other's memory or conversations)
+- fuzz: server_error_count 0 — no 5xx from any malformed or hostile payload
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
