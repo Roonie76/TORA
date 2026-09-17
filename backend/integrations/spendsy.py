@@ -146,8 +146,11 @@ def monthly_totals(txns: Iterable[Dict[str, Any]], months: List[str]) -> List[Di
     return out
 
 
-def category_breakdown(txns: Iterable[Dict[str, Any]], months: List[str], top: int = 8) -> List[Dict[str, Any]]:
+def category_breakdown(txns: Iterable[Dict[str, Any]], months: List[str], top: int = 8,
+                       complete_months: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Expense totals per category; monthly_average divides by complete months only."""
     wanted = set(months)
+    divisor = max(1, complete_months if complete_months else len(months))
     totals: Dict[str, float] = defaultdict(float)
     counts: Dict[str, int] = defaultdict(int)
     for t in txns:
@@ -162,14 +165,14 @@ def category_breakdown(txns: Iterable[Dict[str, Any]], months: List[str], top: i
         out.append({
             "category": name,
             "total": round(amt, 2),
-            "monthly_average": round(amt / max(1, len(months)), 2),
+            "monthly_average": round(amt / divisor, 2),
             "share_pct": round(100 * amt / grand, 1) if grand else 0.0,
             "count": counts[name],
         })
     rest = sum(a for _, a in rows[top:])
     if rest:
         out.append({"category": "Other", "total": round(rest, 2),
-                    "monthly_average": round(rest / max(1, len(months)), 2),
+                    "monthly_average": round(rest / divisor, 2),
                     "share_pct": round(100 * rest / grand, 1), "count": sum(counts[n] for n, _ in rows[top:])})
     return out
 
@@ -207,12 +210,13 @@ def spending_summary(
         "net": round(total_income - total_expenses, 2),
         "average_monthly_income": avg_inc,
         "average_monthly_expenses": avg_exp,
+        "complete_months_averaged": len(complete),
         "savings_rate_pct": round(100 * (total_income - total_expenses) / total_income, 1) if total_income else None,
         "by_month": per_month,
         "transactions_considered": sum(m["count"] for m in per_month),
     }
     if not category:
-        result["top_categories"] = category_breakdown(pool, keys)
+        result["top_categories"] = category_breakdown(pool, keys, complete_months=len(complete))
     return result
 
 

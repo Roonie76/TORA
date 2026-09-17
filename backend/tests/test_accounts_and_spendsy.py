@@ -345,3 +345,21 @@ def test_signed_in_chat_uses_spendsy_tool(llm, client, accounts, monkeypatch):
     # anonymous: the planner is not even offered the tool
     client.post("/api/chat", json={"message": "Where does my money go?"})
     assert "spendsy_data" not in llm.planner_calls[-1][0]["content"]
+
+
+def test_category_average_uses_complete_months_only():
+    txns = [t for t in map(normalise_transaction, TXNS) if t]
+    s = spending_summary(txns, months=3, today=TODAY)
+    rent = next(c for c in s["top_categories"] if c["category"] == "Rent")
+    assert rent["total"] == 44000 and rent["monthly_average"] == 22000  # July + August, not / 3
+    assert s["complete_months_averaged"] == 2
+
+
+def test_account_note_in_answer_prompt(llm, client, accounts, monkeypatch):
+    client.post("/api/chat", json={"message": "Where does my money go?"})
+    assert "not signed in" in llm.answer_calls[-1][0]["content"]
+    client.post("/api/chat", json={"message": "hello"}, headers=ALICE)
+    assert "is signed in to Spendsy" in llm.answer_calls[-1][0]["content"]
+    monkeypatch.setenv("TORA_AUTH_MODE", "off")
+    client.post("/api/chat", json={"message": "hello"})
+    assert "## Account" not in llm.answer_calls[-1][0]["content"]

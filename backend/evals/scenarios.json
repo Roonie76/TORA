@@ -4276,14 +4276,14 @@
                 {
                   "category": "Rent",
                   "total": 44000,
-                  "monthly_average": 14666.67,
+                  "monthly_average": 22000.0,
                   "share_pct": 64.7,
                   "count": 2
                 },
                 {
                   "category": "Food",
                   "total": 24000,
-                  "monthly_average": 8000,
+                  "monthly_average": 12000.0,
                   "share_pct": 35.3,
                   "count": 3
                 }
@@ -4451,14 +4451,14 @@
                 {
                   "category": "Rent",
                   "total": 44000,
-                  "monthly_average": 14666.67,
+                  "monthly_average": 22000.0,
                   "share_pct": 64.7,
                   "count": 2
                 },
                 {
                   "category": "Food",
                   "total": 24000,
-                  "monthly_average": 8000,
+                  "monthly_average": 12000.0,
                   "share_pct": 35.3,
                   "count": 3
                 }

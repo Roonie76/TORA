@@ -235,8 +235,10 @@ class ContextBuilder:
                 f"({period.get('months')} months{', current month partial' if period.get('current_month_partial') else ''})"
                 + (f", filtered to '{out['filter_category']}'" if out.get("filter_category") else ""),
                 f"  total_income={out.get('total_income')}, total_expenses={out.get('total_expenses')}, net={out.get('net')}, "
-                f"average_monthly_income={out.get('average_monthly_income')}, "
-                f"average_monthly_expenses={out.get('average_monthly_expenses')}, savings_rate_pct={out.get('savings_rate_pct')}",
+                f"savings_rate_pct={out.get('savings_rate_pct')}",
+                f"  Per complete month (average of {out.get('complete_months_averaged', '?')} full months — use these for "
+                f"'per month' answers): average_monthly_income={out.get('average_monthly_income')}, "
+                f"average_monthly_expenses={out.get('average_monthly_expenses')}",
             ]
             if period.get("current_month_partial"):
                 lines.append(f"  Note: {period.get('to_month')} is the current month and is not complete yet.")
@@ -245,7 +247,7 @@ class ContextBuilder:
             for m in out.get("by_month", []):
                 lines.append(f"  {m['month']}: income={m['income']}, expenses={m['expenses']}, net={m['net']}")
             for c in out.get("top_categories", []) or []:
-                lines.append(f"  category {c['category']}: total={c['total']}, monthly_average={c['monthly_average']}, "
+                lines.append(f"  category {c['category']}: total={c['total']}, average_per_complete_month={c['monthly_average']}, "
                              f"share_pct={c['share_pct']}")
             if out.get("truncated"):
                 lines.append("  Note: only the most recent records were read; older totals may be incomplete.")

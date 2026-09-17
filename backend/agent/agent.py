@@ -62,6 +62,19 @@ def _max_answer_tokens() -> int:
     return value if value >= 64 else 0
 
 
+
+def _account_note() -> str:
+    """Tell the answer model whether Spendsy records can exist for this user (Phase 6)."""
+    from ..auth import auth_mode, current_identity
+
+    if auth_mode() == "off":
+        return ""
+    if current_identity() is not None:
+        return ("\n\n## Account\n- The user is signed in to Spendsy. Their recorded transactions are only what "
+                "'spendsy_data' results show; if there is no such result, do not guess their spending.")
+    return ("\n\n## Account\n- The user is not signed in, so you cannot see their Spendsy transactions. If they ask "
+            "about their recorded spending, say they need to sign in to Spendsy, or offer to work with figures they share.")
+
 @dataclass
 
 class AgentResponse:
@@ -313,6 +326,9 @@ class ToraAgent:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
 
         # 3. Build Initial Context
+        account_note = _account_note()
+        if account_note:
+            system_prompt = (system_prompt or self.default_system_prompt) + account_note
         messages = self._build_messages(
             user_message=message,
             context=context,
