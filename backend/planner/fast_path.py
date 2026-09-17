@@ -23,7 +23,8 @@ from .models import ToolPlan, ToolPlanStep
 
 _UNIT = r"(?:lakhs?|lacs?|lac|crores?|cr|thousand|grand|k|l)\b"
 _MONEY = re.compile(
-    r"(?:₹|rs\.?|inr)?\s*(?<![\d.,])(\d(?:[\d,]*\d)?(?:\.\d+)?)(?![\d.])\s*(" + _UNIT + r")?(?!\s*(?:%|percent|years?|yrs?|months?|mos?\b))",
+    r"(?:₹|rs\.?|inr)?\s*(?<![\d.,\w])(\d(?:[\d,]*\d)?(?:\.\d+)?)(?![\d.])(?:\s*(" + _UNIT + r")|(?![a-z]))"
+    r"(?!\s*(?:%|percent|years?|yrs?|months?|mos?\b|am\b|pm\b|a\.m|p\.m|days?\b|hours?\b))",
     re.IGNORECASE,
 )
 _PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent\b|per\s*cent\b)", re.IGNORECASE)
@@ -41,6 +42,12 @@ _TAX_COMPLEX = re.compile(
     r"business|freelanc|deduction|nps|senior|super\s*senior|surcharge|capital|rebate\s+for|bonus|arrears|"
     r"property|shares?|mutual|crypto|pension|agricultur|exempt|allowance|lta|claim|insurance|medical|donation|"
     r"80g|80e|deduct|invest|epf|ppf|elss|perquisite|esop|gratuity|leave\s+encash|foreign|nri|resident)\w*",
+    re.IGNORECASE,
+)
+_RULE_QUESTION = re.compile(
+    r"\b(?:limit|maximum\s+deduction|deadline|last\s+date|due\s+date|which\s+section|under\s+(?:which|what)\s+section|"
+    r"section\s*\d+[a-z]*|eligib\w*|exemption\s+rules?|rules?\s+(?:for|on|about)|is\s+\w+\s+(?:allowed|taxable|exempt)|"
+    r"can\s+(?:a\s+)?recovery\s+agents?|ombudsman|complain\w*\s+(?:against|about))\b",
     re.IGNORECASE,
 )
 _MONTHLY_WORDS = re.compile(r"\b(?:a|per|every|each)\s+month\b|\bmonthly\b|\bpm\b|/\s*month", re.IGNORECASE)
@@ -91,7 +98,7 @@ def fast_plan(message: str, intent: Any = None, available_tools: Optional[set] =
         return None
     text = normalize_message(message.strip())
     lower = text.lower()
-    tools = available_tools if available_tools is not None else {"calculator", "finance_calc", "tax_calc"}
+    tools = available_tools if available_tools is not None else {"calculator", "finance_calc", "tax_calc", "rules_lookup"}
     if _FOLLOWUP_REF.search(lower) and not re.search(r"\bwhat\s+is\b", lower[:10]):
         # "that loan", "the same amount" -> needs conversation context: planner
         return None
@@ -149,7 +156,17 @@ def fast_plan(message: str, intent: Any = None, available_tools: Optional[set] =
                 return _finance("inflation_adjust", {"amount": amount, "inflation_rate": percent, "years": years,
                                                      "direction": direction})
 
-    # 7. Simple salary tax
+    # 7. Rule / limit / deadline questions -> reviewed rules library
+    if ("rules_lookup" in tools and _RULE_QUESTION.search(lower) and not _money_values(lower)
+            and not re.search(r"\b(?:credit|card)\s+limit|limit\s+on\s+my\b", lower)
+            and percent is None and not re.search(r"\b(?:calculate|compute|how\s+much\s+tax|my\s+tax)\b", lower)):
+        args: Dict[str, Any] = {"query": text[:200]}
+        ty = _TAX_YEAR.search(lower)
+        if ty:
+            args["tax_year"] = f"{ty.group(1)}-{ty.group(2)}"
+        return _plan("rules_lookup", args, "rules_lookup")
+
+    # 8. Simple salary tax
     if "tax_calc" in tools and re.search(r"\b(?:tax|regime)\b", lower) and not _TAX_COMPLEX.search(lower) and percent is None:
         salary = _one([v for v in money if v >= 10000])
         # Only salary wording: bare "income" could be other income (no standard deduction) -> planner.

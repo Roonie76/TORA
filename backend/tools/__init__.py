@@ -56,8 +56,11 @@ from .research_tool import ResearchTool, ResearchInput
 from .finance_tool import FinanceCalcTool, FinanceCalcInput
 from .tax_tool import TaxCalcTool, TaxCalcInput
 from .spendsy_tool import SpendsyDataTool, SpendsyDataInput
+from .rules_tool import RulesLookupTool, RulesLookupInput
 
 __all__ = [
+    "RulesLookupTool",
+    "RulesLookupInput",
     "SpendsyDataTool",
     "SpendsyDataInput",
     "TaxCalcTool",

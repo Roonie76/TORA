@@ -195,7 +195,7 @@ class ContextBuilder:
             out = res.output
             skip = {"operation", "inputs", "summary", "assumptions", "yearly_schedule", "slab_breakdown", "notes",
                     "recommended", "confidence", "reason", "breakeven_return", "breakeven_appreciation",
-                    "difference", "invest_minus_prepay"}
+                    "difference", "invest_minus_prepay", "legal_basis"}
             figures = ", ".join(f"{k}={v}" for k, v in out.items() if k not in skip and not isinstance(v, (list, dict)))
             lines = [
                 f"- Tool '{res.tool_name}' ({out.get('operation')}): {out.get('summary', '')}",
@@ -210,6 +210,8 @@ class ContextBuilder:
                 lines.append(f"  Slab breakdown: {out['slab_breakdown']}")
             if out.get("notes"):
                 lines.append(f"  Notes: {' '.join(out['notes'])}")
+            if out.get("legal_basis"):
+                lines.append(f"  Legal basis: {'; '.join(out['legal_basis'])}")
             if isinstance(out.get("options"), list) and out["options"]:
                 lines.append(f"  options: {out['options']}")
                 for key in ("recommended", "confidence", "reason", "breakeven_return", "breakeven_appreciation",
@@ -233,6 +235,19 @@ class ContextBuilder:
                 lines.append(f"  Yearly schedule (first years): {out['yearly_schedule'][:3]}")
             if out.get("assumptions"):
                 lines.append(f"  Assumptions: {' '.join(out['assumptions'])}")
+            return "\n".join(lines)
+
+        # Curated rules with citations (Phase 10)
+        if res.tool_name == "rules_lookup" and isinstance(res.output, dict):
+            out = res.output
+            if not out.get("rules"):
+                return f"- Rules library: no verified rule found for '{out.get('query')}'."
+            lines = [f"- Rules library (version {out.get('library_version')}) for '{out.get('query')}':"]
+            for r in out["rules"]:
+                lines.append(f"  [{r['id']}] {r['title']} — {r['summary']}")
+                lines.append(f"    Figures: {r['figures']} | Citation: {r['citation']} | Tax years: "
+                             f"{', '.join(r['tax_years'])} | Regime: {r.get('regime') or 'any'} | "
+                             f"Source: {r['source']} | Verified: {r['verified_on']}")
             return "\n".join(lines)
 
         # The user's own Spendsy records (Phase 6B)

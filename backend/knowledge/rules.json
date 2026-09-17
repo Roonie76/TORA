@@ -1,0 +1,856 @@
+{
+ "version": "2026-09-17",
+ "rules": [
+  {
+   "id": "act-transition",
+   "title": "Income-tax Act, 2025 replaces the 1961 Act",
+   "topics": [
+    "tax",
+    "law"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "The Income-tax Act, 2025 applies from 1 April 2026 (tax year 2026-27). 'Previous year' and 'assessment year' are replaced by a single 'tax year'. Income earned in 2025-26 is still governed by the 1961 Act and filed as AY 2026-27.",
+   "figures": {
+    "effective_from": "2026-04-01"
+   },
+   "citation": {
+    "2025-26": "Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025"
+   },
+   "source_url": "https://en.wikipedia.org/wiki/Income-tax_Act,_2025",
+   "verified_on": "2026-09-17",
+   "keywords": "new act old act tax year assessment year previous year renumbered sections",
+   "notes": null
+  },
+  {
+   "id": "new-regime",
+   "title": "New tax regime is the default",
+   "topics": [
+    "tax",
+    "regime"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "new",
+   "summary": "The new regime is the default for individuals. It has lower slab rates but allows only a few deductions (standard deduction, employer NPS contribution). Salaried people can choose the old regime each year when filing; people with business income can switch back only once.",
+   "figures": {
+    "default": true
+   },
+   "citation": {
+    "2025-26": "Section 115BAC, Income-tax Act, 1961",
+    "2026-27": "Section 202, Income-tax Act, 2025 (earlier s.115BAC)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "new regime default opt out old regime choose switch 115bac 202",
+   "notes": null
+  },
+  {
+   "id": "new-regime-slabs",
+   "title": "New regime slab rates",
+   "topics": [
+    "tax",
+    "slabs"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "new",
+   "summary": "0–4 lakh: nil; 4–8 lakh: 5%; 8–12 lakh: 10%; 12–16 lakh: 15%; 16–20 lakh: 20%; 20–24 lakh: 25%; above 24 lakh: 30%. Same for all ages.",
+   "figures": {
+    "slabs": [
+     [
+      400000,
+      0
+     ],
+     [
+      800000,
+      5
+     ],
+     [
+      1200000,
+      10
+     ],
+     [
+      1600000,
+      15
+     ],
+     [
+      2000000,
+      20
+     ],
+     [
+      2400000,
+      25
+     ],
+     [
+      null,
+      30
+     ]
+    ]
+   },
+   "citation": {
+    "2025-26": "Section 115BAC, Income-tax Act, 1961",
+    "2026-27": "Section 202, Income-tax Act, 2025 (earlier s.115BAC)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "slab rates new regime tax rates brackets",
+   "notes": null
+  },
+  {
+   "id": "old-regime-slabs",
+   "title": "Old regime slab rates",
+   "topics": [
+    "tax",
+    "slabs"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Below 60: 0–2.5 lakh nil, 2.5–5 lakh 5%, 5–10 lakh 20%, above 10 lakh 30%. Seniors (60–79): nil up to 3 lakh. Super seniors (80+): nil up to 5 lakh, 5–10 lakh 20%.",
+   "figures": {
+    "basic_exemption": {
+     "normal": 250000,
+     "senior": 300000,
+     "super_senior": 500000
+    }
+   },
+   "citation": {
+    "2025-26": "First Schedule / Finance Act, Income-tax Act, 1961 regime",
+    "2026-27": "Rates for the old regime under Income-tax Act, 2025 (Finance Act 2026)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "old regime slabs senior citizen super senior basic exemption",
+   "notes": null
+  },
+  {
+   "id": "standard-deduction",
+   "title": "Standard deduction for salary and pension",
+   "topics": [
+    "tax",
+    "salary"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Salaried employees and pensioners get a flat standard deduction: ₹75,000 in the new regime and ₹50,000 in the old regime.",
+   "figures": {
+    "new": 75000,
+    "old": 50000
+   },
+   "citation": {
+    "2025-26": "Section 16(ia), Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.16(ia) of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "standard deduction salary pension 75000 50000",
+   "notes": null
+  },
+  {
+   "id": "rebate",
+   "title": "Rebate — no tax up to ₹12 lakh (new regime)",
+   "topics": [
+    "tax",
+    "rebate"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Resident individuals pay no tax in the new regime if total income is up to ₹12 lakh (rebate up to ₹60,000), with marginal relief just above ₹12 lakh. In the old regime the rebate is up to ₹12,500 for income up to ₹5 lakh. The rebate does not apply to tax on special-rate income such as capital gains under s.111A/112A.",
+   "figures": {
+    "new_limit": 1200000,
+    "new_max": 60000,
+    "old_limit": 500000,
+    "old_max": 12500
+   },
+   "citation": {
+    "2025-26": "Section 87A, Income-tax Act, 1961",
+    "2026-27": "Section 156, Income-tax Act, 2025 (earlier s.87A)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "rebate 87a 156 12 lakh tax free zero tax marginal relief",
+   "notes": null
+  },
+  {
+   "id": "80c",
+   "title": "Investments and payments deduction (80C) — ₹1.5 lakh",
+   "topics": [
+    "tax",
+    "deduction"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. Up to ₹1,50,000 a year for EPF, PPF, ELSS, life-insurance premium, principal repayment of a home loan, children's tuition fees, 5-year tax-saving FD, NSC, Sukanya Samriddhi and similar.",
+   "figures": {
+    "limit": 150000
+   },
+   "citation": {
+    "2025-26": "Section 80C, Income-tax Act, 1961",
+    "2026-27": "Section 123, Income-tax Act, 2025 (earlier s.80C)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "80c 123 ppf elss epf lic tuition principal tax saving fd nsc ssy deduction limit",
+   "notes": null
+  },
+  {
+   "id": "80ccd",
+   "title": "NPS deductions",
+   "topics": [
+    "tax",
+    "deduction",
+    "retirement"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Own NPS contribution: extra ₹50,000 over the 80C limit (old regime, s.80CCD(1B)). Employer's NPS contribution: deductible up to 14% of salary in the new regime and 10% in the old regime.",
+   "figures": {
+    "self_extra": 50000,
+    "employer_new_pct": 14,
+    "employer_old_pct": 10
+   },
+   "citation": {
+    "2025-26": "Section 80CCD, Income-tax Act, 1961",
+    "2026-27": "Section 124, Income-tax Act, 2025 (earlier s.80CCD)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "nps 80ccd 1b employer contribution 124 50000",
+   "notes": null
+  },
+  {
+   "id": "80d",
+   "title": "Health insurance deduction (80D)",
+   "topics": [
+    "tax",
+    "deduction",
+    "insurance"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. Health-insurance premium: up to ₹25,000 for self/spouse/children (₹50,000 if a senior citizen) plus up to ₹25,000 for parents (₹50,000 if they are senior). Preventive health check-ups up to ₹5,000 fall within these limits.",
+   "figures": {
+    "self": 25000,
+    "self_senior": 50000,
+    "parents": 25000,
+    "parents_senior": 50000,
+    "checkup": 5000
+   },
+   "citation": {
+    "2025-26": "Section 80D, Income-tax Act, 1961",
+    "2026-27": "Section 126, Income-tax Act, 2025 (earlier s.80D)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "80d 126 health insurance medical premium parents senior mediclaim",
+   "notes": null
+  },
+  {
+   "id": "80e",
+   "title": "Education loan interest (80E)",
+   "topics": [
+    "tax",
+    "deduction",
+    "loan"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. The full interest on a loan for higher education of self, spouse or children is deductible, with no upper limit, for up to 8 years from when repayment starts.",
+   "figures": {
+    "limit": null,
+    "years": 8
+   },
+   "citation": {
+    "2025-26": "Section 80E, Income-tax Act, 1961",
+    "2026-27": "Section 129, Income-tax Act, 2025 (earlier s.80E)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "80e 129 education loan interest student loan",
+   "notes": null
+  },
+  {
+   "id": "80g",
+   "title": "Donations (80G)",
+   "topics": [
+    "tax",
+    "deduction"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. Donations to approved funds and charities are deductible at 50% or 100%, some subject to a limit of 10% of adjusted income. Cash donations above ₹2,000 do not qualify.",
+   "figures": {
+    "cash_limit": 2000
+   },
+   "citation": {
+    "2025-26": "Section 80G, Income-tax Act, 1961",
+    "2026-27": "Section 133, Income-tax Act, 2025 (earlier s.80G)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "80g 133 donation charity",
+   "notes": null
+  },
+  {
+   "id": "savings-interest",
+   "title": "Interest on savings and deposits (80TTA / 80TTB)",
+   "topics": [
+    "tax",
+    "deduction",
+    "interest"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. Savings-account interest up to ₹10,000 is deductible (80TTA). Senior citizens can deduct up to ₹50,000 of interest on savings accounts and deposits (80TTB).",
+   "figures": {
+    "normal": 10000,
+    "senior": 50000
+   },
+   "citation": {
+    "2025-26": "Section 80TTA/80TTB, Income-tax Act, 1961",
+    "2026-27": "Section 153, Income-tax Act, 2025 (earlier s.80TTA/80TTB)"
+   },
+   "source_url": "https://indiankanoon.org/doc/104532829/",
+   "verified_on": "2026-09-17",
+   "keywords": "80tta 80ttb 153 savings interest fd interest senior",
+   "notes": null
+  },
+  {
+   "id": "home-loan-interest",
+   "title": "Home-loan interest on a self-occupied house",
+   "topics": [
+    "tax",
+    "deduction",
+    "loan",
+    "property"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. Interest on a loan for a self-occupied house is deductible up to ₹2,00,000 a year (construction must finish within 5 years). For a let-out house the interest is fully deductible from rent, but the overall house-property loss that can be set off against other income is capped at ₹2,00,000. The new regime allows no deduction for a self-occupied house.",
+   "figures": {
+    "self_occupied_limit": 200000,
+    "loss_setoff_limit": 200000
+   },
+   "citation": {
+    "2025-26": "Section 24(b), Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.24(b) of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "home loan interest 24b house property self occupied let out loss",
+   "notes": null
+  },
+  {
+   "id": "hra",
+   "title": "House rent allowance (HRA) exemption",
+   "topics": [
+    "tax",
+    "salary",
+    "rent"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": "old",
+   "summary": "Old regime only. The exempt part of HRA is the lowest of: actual HRA received; rent paid minus 10% of basic salary (+DA); 50% of basic salary in Mumbai, Delhi, Kolkata or Chennai (40% elsewhere). Landlord PAN is needed if rent exceeds ₹1 lakh a year.",
+   "figures": {
+    "metro_pct": 50,
+    "non_metro_pct": 40,
+    "rent_less_pct_of_basic": 10,
+    "landlord_pan_above": 100000
+   },
+   "citation": {
+    "2025-26": "Section 10(13A), Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.10(13A) of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "hra house rent allowance rent exemption metro basic salary",
+   "notes": null
+  },
+  {
+   "id": "stcg-equity",
+   "title": "Short-term gains on listed shares and equity funds",
+   "topics": [
+    "tax",
+    "capital gains"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Gains on STT-paid listed shares and equity mutual funds held 12 months or less are taxed at 20% (plus surcharge and cess). The rebate does not apply to this tax.",
+   "figures": {
+    "rate": 20,
+    "holding_months": 12
+   },
+   "citation": {
+    "2025-26": "Section 111A, Income-tax Act, 1961",
+    "2026-27": "Section 196, Income-tax Act, 2025 (earlier s.111A)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "stcg short term capital gains shares equity mutual fund 111a 196 20%",
+   "notes": null
+  },
+  {
+   "id": "ltcg-equity",
+   "title": "Long-term gains on listed shares and equity funds",
+   "topics": [
+    "tax",
+    "capital gains"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Gains on STT-paid listed shares and equity mutual funds held more than 12 months are taxed at 12.5% on the amount above ₹1.25 lakh a year.",
+   "figures": {
+    "rate": 12.5,
+    "exemption": 125000,
+    "holding_months": 12
+   },
+   "citation": {
+    "2025-26": "Section 112A, Income-tax Act, 1961",
+    "2026-27": "Section 198, Income-tax Act, 2025 (earlier s.112A)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "ltcg long term capital gains shares equity 112a 198 12.5% 1.25 lakh exemption",
+   "notes": null
+  },
+  {
+   "id": "ltcg-other",
+   "title": "Long-term gains on property, gold and other assets",
+   "topics": [
+    "tax",
+    "capital gains",
+    "property"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Other long-term gains are taxed at 12.5% without indexation (property and unlisted assets held over 24 months). For land or buildings bought before 23 July 2024, resident individuals may instead pay 20% with indexation if that is lower.",
+   "figures": {
+    "rate": 12.5,
+    "grandfather_rate_with_indexation": 20,
+    "property_cutoff": "2024-07-23"
+   },
+   "citation": {
+    "2025-26": "Section 112, Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.112 of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "ltcg property gold real estate indexation 112 12.5% 20%",
+   "notes": null
+  },
+  {
+   "id": "surcharge-cess",
+   "title": "Surcharge and cess",
+   "topics": [
+    "tax"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Surcharge applies above ₹50 lakh (10%), ₹1 crore (15%), ₹2 crore (25%) and ₹5 crore (37%; capped at 25% in the new regime). Surcharge on listed-equity capital gains is capped at 15%. Health and education cess is 4% on tax plus surcharge.",
+   "figures": {
+    "cess": 4,
+    "bands": [
+     [
+      5000000,
+      10
+     ],
+     [
+      10000000,
+      15
+     ],
+     [
+      20000000,
+      25
+     ],
+     [
+      50000000,
+      37
+     ]
+    ],
+    "new_regime_cap": 25,
+    "equity_gains_cap": 15
+   },
+   "citation": {
+    "2025-26": "Finance Act / Income-tax Act, 1961",
+    "2026-27": "Finance Act 2026 / Income-tax Act, 2025"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "surcharge cess health education 4% high income",
+   "notes": null
+  },
+  {
+   "id": "advance-tax",
+   "title": "Advance tax instalments",
+   "topics": [
+    "tax",
+    "compliance",
+    "deadline"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Pay advance tax if the year's tax after TDS is ₹10,000 or more: at least 15% by 15 June, 45% by 15 September, 75% by 15 December and 100% by 15 March. Resident senior citizens without business income are exempt. Presumptive-tax (44AD/44ADA) taxpayers can pay everything by 15 March.",
+   "figures": {
+    "threshold": 10000,
+    "schedule": [
+     [
+      "06-15",
+      15
+     ],
+     [
+      "09-15",
+      45
+     ],
+     [
+      "12-15",
+      75
+     ],
+     [
+      "03-15",
+      100
+     ]
+    ]
+   },
+   "citation": {
+    "2025-26": "Section 208–211, Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.208–211 of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "advance tax instalment due date june september december march 10000",
+   "notes": null
+  },
+  {
+   "id": "interest-234",
+   "title": "Interest for late return or short advance tax",
+   "topics": [
+    "tax",
+    "compliance",
+    "penalty"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Simple interest of 1% a month applies for filing the return late when tax is unpaid (234A), for paying less than 90% of tax as advance tax (234B) and for missing instalments (234C). A late-filing fee of ₹5,000 (₹1,000 if income is up to ₹5 lakh) also applies.",
+   "figures": {
+    "rate_per_month": 1,
+    "late_fee": 5000,
+    "late_fee_small": 1000
+   },
+   "citation": {
+    "2025-26": "Section 234A/234B/234C/234F, Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.234A/234B/234C/234F of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "interest 234a 234b 234c 234f late fee penalty delay",
+   "notes": null
+  },
+  {
+   "id": "itr-due-dates",
+   "title": "Return due dates — income earned in 2025-26",
+   "topics": [
+    "tax",
+    "compliance",
+    "deadline"
+   ],
+   "tax_years": [
+    "2025-26"
+   ],
+   "regime": null,
+   "summary": "For income of 2025-26 (AY 2026-27): 31 July 2026 for individuals not needing an audit (ITR-1/ITR-2); 31 August 2026 for non-audit ITR-3/ITR-4; 31 October 2026 for audit cases. A belated or revised return can be filed until 31 December 2026 (a belated return pays the late fee and loses some loss carry-forwards).",
+   "figures": {
+    "itr1_itr2": "2026-07-31",
+    "itr3_itr4_non_audit": "2026-08-31",
+    "audit": "2026-10-31",
+    "belated_revised": "2026-12-31"
+   },
+   "citation": {
+    "2025-26": "Section 139, Income-tax Act, 1961"
+   },
+   "source_url": "https://cleartax.in/s/due-date-tax-filing",
+   "verified_on": "2026-09-17",
+   "keywords": "itr due date last date file return belated revised deadline july august",
+   "notes": null
+  },
+  {
+   "id": "return-filing-new-act",
+   "title": "Return of income under the new Act",
+   "topics": [
+    "tax",
+    "compliance"
+   ],
+   "tax_years": [
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "From tax year 2026-27 the obligation to file a return is in section 263 of the Income-tax Act, 2025. Due dates for income earned in 2026-27 will fall in 2027; confirm them when notified.",
+   "figures": {},
+   "citation": {
+    "2026-27": "Section 263, Income-tax Act, 2025 (earlier s.139)"
+   },
+   "source_url": "https://eztax.in/income-tax-act-2025/section-263",
+   "verified_on": "2026-09-17",
+   "keywords": "return of income 263 139 filing obligation",
+   "notes": null
+  },
+  {
+   "id": "presumptive",
+   "title": "Presumptive income for small business and professionals",
+   "topics": [
+    "tax",
+    "business"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Small businesses can declare 8% of turnover as profit (6% for digital receipts) if turnover is up to ₹2 crore (₹3 crore when cash receipts are at most 5%). Specified professionals can declare 50% of receipts if receipts are up to ₹50 lakh (₹75 lakh when cash receipts are at most 5%).",
+   "figures": {
+    "business_rate": 8,
+    "business_digital_rate": 6,
+    "turnover_limit": 20000000,
+    "turnover_limit_digital": 30000000,
+    "professional_rate": 50,
+    "receipts_limit": 5000000,
+    "receipts_limit_digital": 7500000
+   },
+   "citation": {
+    "2025-26": "Section 44AD/44ADA, Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provision corresponding to s.44AD/44ADA of the 1961 Act (confirm the new section number)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "presumptive 44ad 44ada freelancer small business professional turnover",
+   "notes": null
+  },
+  {
+   "id": "tds-salary",
+   "title": "TDS on salary",
+   "topics": [
+    "tax",
+    "tds",
+    "salary"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Employers deduct tax from salary each month at the average rate for the estimated yearly tax, using the regime the employee chooses. Form 16 summarises it.",
+   "figures": {},
+   "citation": {
+    "2025-26": "Section 192, Income-tax Act, 1961",
+    "2026-27": "Section 392, Income-tax Act, 2025 (earlier s.192)"
+   },
+   "source_url": "https://indiankanoon.org/doc/158942087/",
+   "verified_on": "2026-09-17",
+   "keywords": "tds salary form 16 employer deduction 192 392",
+   "notes": null
+  },
+  {
+   "id": "tds-interest",
+   "title": "TDS on deposit interest",
+   "topics": [
+    "tax",
+    "tds",
+    "interest"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Banks deduct 10% TDS on deposit interest above ₹50,000 a year (₹1 lakh for senior citizens); 20% if PAN is missing. Form 15G/15H can be submitted when the total income is below the taxable limit.",
+   "figures": {
+    "rate": 10,
+    "threshold": 50000,
+    "threshold_senior": 100000,
+    "no_pan_rate": 20
+   },
+   "citation": {
+    "2025-26": "Section 194A, Income-tax Act, 1961",
+    "2026-27": "Section 393, Income-tax Act, 2025 (earlier s.194A)"
+   },
+   "source_url": "https://cleartax.in/s/section-393-of-income-tax-act",
+   "verified_on": "2026-09-17",
+   "keywords": "tds fd interest 194a 393 15g 15h bank deposit",
+   "notes": null
+  },
+  {
+   "id": "rbi-recovery",
+   "title": "Fair treatment by lenders and recovery agents",
+   "topics": [
+    "debt",
+    "rights",
+    "rbi"
+   ],
+   "tax_years": [
+    "all"
+   ],
+   "regime": null,
+   "summary": "RBI rules require lenders and their recovery agents to act fairly: no threats, abuse or public humiliation, and no recovery calls before 8 am or after 7 pm. The lender is responsible for its agents.",
+   "figures": {
+    "call_window": "08:00-19:00"
+   },
+   "citation": {
+    "all": "RBI directions on outsourcing / recovery agents (August 2022) and Fair Practices Code"
+   },
+   "source_url": "https://www.business-standard.com/amp/article/finance/rbi-directs-loan-recovery-agents-not-to-intimidate-borrowers-no-calling-before-8am-after-7pm-122081201144_1.html",
+   "verified_on": "2026-09-17",
+   "keywords": "recovery agent harassment calls threat rbi fair practice collection",
+   "notes": null
+  },
+  {
+   "id": "rbi-ombudsman",
+   "title": "Complaints against banks and lenders",
+   "topics": [
+    "debt",
+    "rights",
+    "rbi"
+   ],
+   "tax_years": [
+    "all"
+   ],
+   "regime": null,
+   "summary": "Complain to the lender first. If there is no reply within 30 days or the answer is unsatisfactory, file a free complaint with the RBI Integrated Ombudsman at cms.rbi.org.in (or call 14448).",
+   "figures": {
+    "wait_days": 30,
+    "portal": "cms.rbi.org.in",
+    "helpline": "14448"
+   },
+   "citation": {
+    "all": "Reserve Bank – Integrated Ombudsman Scheme, 2021"
+   },
+   "source_url": "https://cms.rbi.org.in",
+   "verified_on": "2026-09-17",
+   "keywords": "complaint ombudsman rbi grievance bank nbfc cms",
+   "notes": null
+  },
+  {
+   "id": "rbi-prepayment",
+   "title": "No prepayment penalty on floating-rate loans",
+   "topics": [
+    "debt",
+    "loan",
+    "rbi"
+   ],
+   "tax_years": [
+    "all"
+   ],
+   "regime": null,
+   "summary": "Banks and NBFCs cannot charge foreclosure or prepayment penalties on floating-rate term loans taken by individuals for non-business purposes, such as most home loans.",
+   "figures": {},
+   "citation": {
+    "all": "RBI circulars on foreclosure charges for floating-rate loans"
+   },
+   "source_url": "https://www.rbi.org.in",
+   "verified_on": "2026-09-17",
+   "keywords": "prepayment penalty foreclosure charges floating rate home loan part payment",
+   "notes": null
+  },
+  {
+   "id": "rbi-credit-card",
+   "title": "Credit-card minimum due and billing",
+   "topics": [
+    "debt",
+    "credit card",
+    "rbi"
+   ],
+   "tax_years": [
+    "all"
+   ],
+   "regime": null,
+   "summary": "Under RBI's credit-card directions, the minimum amount due must be set so that the balance does not keep growing (no negative amortisation), and issuers cannot charge interest on interest-free-period amounts that are paid in full. Paying only the minimum still costs very high interest.",
+   "figures": {},
+   "citation": {
+    "all": "RBI (Credit Card and Debit Card – Issuance and Conduct) Directions, 2022"
+   },
+   "source_url": "https://www.rbi.org.in",
+   "verified_on": "2026-09-17",
+   "keywords": "credit card minimum due interest free period billing rbi",
+   "notes": null
+  },
+  {
+   "id": "tele-manas",
+   "title": "Mental-health support line",
+   "topics": [
+    "wellbeing"
+   ],
+   "tax_years": [
+    "all"
+   ],
+   "regime": null,
+   "summary": "Tele-MANAS is India's free, 24×7 national mental-health helpline: 14416 (or 1-800-891-4416).",
+   "figures": {
+    "helpline": "14416"
+   },
+   "citation": {
+    "all": "Ministry of Health and Family Welfare – Tele-MANAS"
+   },
+   "source_url": "https://telemanas.mohfw.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "stress anxiety depression helpline suicide mental health",
+   "notes": null
+  }
+ ]
+}

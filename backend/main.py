@@ -24,7 +24,7 @@ from .context import (
 )
 from .tools import (
     ToolRegistry, CalculatorTool, WebSearchTool, WebFetchTool, ResearchTool, FinanceCalcTool, TaxCalcTool,
-    SpendsyDataTool, ToolExecutor,
+    SpendsyDataTool, RulesLookupTool, ToolExecutor,
 )
 from .auth import (
     AuthError,
@@ -115,6 +115,7 @@ tool_registry.register(WebFetchTool())
 tool_registry.register(ResearchTool())
 tool_registry.register(FinanceCalcTool())
 tool_registry.register(TaxCalcTool())
+tool_registry.register(RulesLookupTool())
 # Only offered to the planner for signed-in users (see Planner._usable_tools).
 tool_registry.register(SpendsyDataTool())
 

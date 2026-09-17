@@ -38,6 +38,7 @@ from ..tools import (
     CalculatorTool,
     FinanceCalcTool,
     ResearchTool,
+    RulesLookupTool,
     SpendsyDataTool,
     TaxCalcTool,
     ToolExecutor,
@@ -171,6 +172,7 @@ class EvalHarness:
         registry.register(CalculatorTool())
         registry.register(FinanceCalcTool())
         registry.register(TaxCalcTool())
+        registry.register(RulesLookupTool())
         # Spendsy records always come from fixtures (there is no live Spendsy service in evals).
         registry.register(FixtureTool(SpendsyDataTool(), self))
         web_tools = [WebSearchTool(), WebFetchTool(), ResearchTool(provider=_NoopResearchProvider())]

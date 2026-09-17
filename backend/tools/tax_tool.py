@@ -61,6 +61,37 @@ def normalise_tax_params(params: Dict[str, Any]) -> Dict[str, Any]:
     return clean
 
 
+def _legal_basis(operation: str, params: Dict[str, Any]) -> list:
+    """Citations for the rules this calculation relied on (from the reviewed rules library)."""
+    from ..knowledge import get_library
+
+    ty = params.get("tax_year")
+    ids = ["new-regime-slabs", "rebate", "surcharge-cess"]
+    if operation == "compare_regimes" or params.get("regime") == "old":
+        ids.insert(1, "old-regime-slabs")
+    if params.get("gross_salary"):
+        ids.append("standard-deduction")
+    deductions = params.get("deductions") or {}
+    for key, rid in (("section_80c", "80c"), ("section_80d_self", "80d"), ("section_80d_parents", "80d"),
+                     ("section_80ccd_1b", "80ccd"), ("employer_nps", "80ccd"), ("home_loan_interest", "home-loan-interest"),
+                     ("savings_interest", "savings-interest")):
+        if key in deductions and rid not in ids:
+            ids.append(rid)
+    if params.get("stcg_equity"):
+        ids.append("stcg-equity")
+    if params.get("ltcg_equity"):
+        ids.append("ltcg-equity")
+    if params.get("ltcg_other"):
+        ids.append("ltcg-other")
+    lib = get_library()
+    out = []
+    for rid in ids:
+        rule = lib.get(rid)
+        if rule is not None and rule.applies_to(ty):
+            out.append(f"{rule.title}: {rule.citation_for(ty)}")
+    return out
+
+
 class TaxCalcInput(BaseModel):
     operation: Literal["compute_tax", "compare_regimes"] = Field(
         ..., description="compute_tax for one regime, compare_regimes for new vs old."
@@ -94,4 +125,6 @@ class TaxCalcTool(BaseTool):
         if operation == "compare_regimes":
             clean.pop("regime", None)
         clean.setdefault("tax_year", current_tax_year())
-        return TAX_OPERATIONS[operation](**clean)
+        result = TAX_OPERATIONS[operation](**clean)
+        result["legal_basis"] = _legal_basis(operation, clean)
+        return result

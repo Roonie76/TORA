@@ -5258,6 +5258,114 @@
           }
         }
       ]
+    },
+    {
+      "id": "rules-80c",
+      "category": "rules",
+      "description": "Rule question answered from the library with a citation",
+      "turns": [
+        {
+          "user": "What is the 80C limit?",
+          "answer": "The limit is ₹1,50,000 a year (Section 123 of the Income-tax Act, 2025, earlier 80C), old regime only.",
+          "expect": {
+            "fast_path": true,
+            "planner_called": false,
+            "tools": [
+              "rules_lookup"
+            ],
+            "tool_output": {
+              "rules_lookup.found": true
+            },
+            "system_contains": [
+              "Section 123"
+            ],
+            "grounding_action": "none"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rules-invented-limit",
+      "category": "rules",
+      "description": "A wrong limit is rewritten",
+      "turns": [
+        {
+          "user": "What is the 80C limit?",
+          "answers": [
+            "The 80C limit is ₹2,50,000.",
+            "It is ₹1,50,000 (Section 123, earlier 80C)."
+          ],
+          "expect": {
+            "grounding_action": "regenerated"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rules-recovery",
+      "category": "rules",
+      "description": "Borrower rights question",
+      "turns": [
+        {
+          "user": "Can a recovery agent call me at 10 pm?",
+          "expect": {
+            "tools": [
+              "rules_lookup"
+            ],
+            "system_contains": [
+              "8 am"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "rules-not-web",
+      "category": "rules",
+      "description": "Rule question uses the library, not web search (planner path)",
+      "fast_path": false,
+      "turns": [
+        {
+          "user": "Explain the HRA exemption rules",
+          "plan": {
+            "thought": "rule",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "rules_lookup",
+                "arguments": {
+                  "query": "HRA exemption rules"
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "rules_lookup"
+            ],
+            "system_contains": [
+              "10(13A)"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "rules-tax-basis",
+      "category": "rules",
+      "description": "Tax results carry their legal basis",
+      "turns": [
+        {
+          "user": "How much tax on a 12.75 lakh salary this year?",
+          "expect": {
+            "fast_path": true,
+            "system_contains": [
+              "Legal basis:",
+              "Section 156"
+            ]
+          }
+        }
+      ]
     }
   ]
 }
