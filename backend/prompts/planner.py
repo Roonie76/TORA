@@ -7,13 +7,26 @@ _SPENDSY_RULE = (
 )
 
 
+def _strip_titles(node: Any) -> Any:
+    if isinstance(node, dict):
+        return {k: _strip_titles(v) for k, v in node.items()
+                if not (k == "title" and isinstance(v, str))}
+    if isinstance(node, list):
+        return [_strip_titles(v) for v in node]
+    return node
+
+
 def get_planner_system_prompt(tool_schemas: List[Dict[str, Any]], known_facts: str = "") -> str:
     """
     Generate the system prompt for the Tool Planner.
     Injects registered tool JSON schemas dynamically and instructs the LLM
     to respond strictly in JSON matching the ToolPlan schema.
     """
-    schemas_formatted = json.dumps(tool_schemas, indent=2) if tool_schemas else "[]"
+    # Compact JSON without pydantic "title" noise: the planner prompt is re-read on every
+    # turn, and on CPU prompt processing dominates latency (Phase 5A live run).
+    schemas_formatted = (
+        json.dumps(_strip_titles(tool_schemas), separators=(",", ":"), ensure_ascii=False) if tool_schemas else "[]"
+    )
 
     return (
         "You are TORA's Tool Planner for Spendsy.\n"

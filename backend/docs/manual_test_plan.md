@@ -1,6 +1,6 @@
 # TORA Manual Test Plan
 
-Covers the re-audit fixes, Phase 3 (conversations, Memory 2.0, finance engine) and Phase 4 (benchmark, answer verification, tax, planning, monitoring).
+Covers the re-audit fixes, Phase 3 (conversations, Memory 2.0, finance engine), Phase 4 (benchmark, answer verification, tax, planning, monitoring), Phase 5 (Hinglish/typos, planner reliability, model-assisted memory) and Phase 6 (accounts and Spendsy data).
 An interactive version with pass/fail tracking is published as the *TORA Test Runbook* artifact. Start with the browser walkthrough.
 
 ## Setup
@@ -22,11 +22,13 @@ PowerShell helpers:
 
 ```powershell
 $global:cid = $null
+$global:tok = $null   # Phase 6: set to a Spendsy access token to chat as that user
+function tora-headers { if ($global:tok) { @{ Authorization = "Bearer $global:tok" } } else { @{} } }
 function tora([string]$msg) {
   $body = @{ message = $msg }
   if ($global:cid) { $body.conversation_id = $global:cid }
   $json = $body | ConvertTo-Json
-  $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/chat `
+  $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/chat -Headers (tora-headers) `
        -ContentType 'application/json; charset=utf-8' `
        -Body ([System.Text.Encoding]::UTF8.GetBytes($json))
   if ($r.conversation_id) { $global:cid = $r.conversation_id }
@@ -34,9 +36,10 @@ function tora([string]$msg) {
   if ($r.grounding) { "grounding: " + ($r.grounding | ConvertTo-Json -Compress) }
 }
 function tora-new   { $global:cid = $null }
-function tora-mem   { (Invoke-RestMethod "http://127.0.0.1:8000/api/conversations/$global:cid").memory_summary }
+function tora-mem   { (Invoke-RestMethod "http://127.0.0.1:8000/api/conversations/$global:cid" -Headers (tora-headers)).memory_summary }
+function tora-me    { Invoke-RestMethod http://127.0.0.1:8000/api/me -Headers (tora-headers) | ConvertTo-Json }
 function tora-trace { (Invoke-RestMethod "http://127.0.0.1:8000/api/traces?limit=1").traces[-1] |
-                      Select-Object intent,is_followup,planner,tools,grounding,status,total_ms |
+                      Select-Object intent,is_followup,planner,tools,model_facts,grounding,status,total_ms |
                       ConvertTo-Json -Depth 5 }
 ```
 
@@ -52,7 +55,7 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- 779 passed, 0 failed (warnings from FastAPI/anyio are fine)
+- 857 passed, 0 failed (warnings from FastAPI/anyio are fine)
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -64,8 +67,9 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- Prints Scenarios: 22/22 passed · checks: 103/103
+- Prints Scenarios: 126/126 passed · checks: 331/331
 - Exit code 0
+- The category table includes language (Hinglish/typos) and accounts
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -1467,5 +1471,293 @@ Run npm run web and open the TORA tab.
 **Expect**
 
 - Messages wrap, input stays usable, no sideways scroll
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Hinglish, typos and model-assisted memory (Phase 5B · 5D · 5E)
+
+Phase 5 taught TORA everyday Indian phrasing and lets the model help when the rules miss a fact. Start each test with tora-new.
+
+### H1 — Hinglish statements
+
+**Do**
+
+1. `tora 'meri salry 80k hai'`
+2. `tora 'mera kiraya 20k hai'`
+3. `tora-mem`
+
+**Expect**
+
+- Turns 1–2 are [memory_update]
+- tora-mem: Monthly Income ₹80,000 and Monthly Rent ₹20,000
+
+**Correct figures:** Salary ₹80,000; rent ₹20,000.
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H2 — Hinglish forget and question
+
+**Do**
+
+1. `tora 'meri salary 80k hai'`
+2. `tora 'salary kitna hai?'`
+3. `tora 'salary bhool jao'`
+4. `tora-mem`
+
+**Expect**
+
+- Turn 2 is [memory_recall] and answers ₹80,000
+- Turn 3 is [memory_delete]; tora-mem no longer lists income
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H3 — Typos
+
+**Do**
+
+1. `tora 'my salry is 75k and rnet is 18k'`
+2. `tora 'my credt card ballance is 40k'`
+3. `tora-mem`
+
+**Expect**
+
+- tora-mem: Monthly Income ₹75,000, Monthly Rent ₹18,000, credit card debt ₹40,000
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H4 — Past and present in one sentence
+
+**Do**
+
+1. `tora 'I used to earn 60k but now I earn 72k'`
+2. `tora 'What was my previous salary?'`
+
+**Expect**
+
+- tora-mem: Monthly Income ₹72,000 (Previous: ₹60,000)
+- Turn 2 answers ₹60,000
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H5 — Amount-first wording
+
+**Do**
+
+1. `tora 'I spend 15k on groceries and have 2 lakh saved'`
+2. `tora-mem`
+
+**Expect**
+
+- tora-mem lists food ₹15,000 and savings ₹2 lakh
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H6 — Examples are not your facts
+
+**Do**
+
+1. `tora 'Tax on 60 lakh income?'`
+2. `tora 'Super senior with 7 lakh income under old regime'`
+3. `tora-mem`
+
+**Expect**
+
+- Both turns run tax_calc (tora-trace)
+- tora-mem is empty — 60 lakh / 7 lakh were not saved as your salary
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H7 — Calculation questions are not memory questions
+
+**Do**
+
+1. `tora 'I earn 1 lakh and spend 65k a month. What is my savings rate?'`
+2. `tora 'My EMIs are 45k and income 1 lakh — what is my debt to income ratio?'`
+
+**Expect**
+
+- Both are [calculation] and tora-trace shows finance_calc
+- Savings rate 35%; debt-to-income 45%
+
+**Correct figures:** Savings rate = (1,00,000 − 65,000) ÷ 1,00,000 = 35%. DTI = 45,000 ÷ 1,00,000 = 45%.
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H8 — Model-assisted extraction (vague wording)
+
+**Do**
+
+1. `tora 'I pull in about 90 grand a month from my job'`
+2. `tora-trace`
+3. `tora 'What is my salary?'`
+
+**Expect**
+
+- tora-trace for turn 1 shows model_facts with income accepted
+- Turn 3 answers ₹90,000
+- With $env:TORA_LLM_EXTRACTION="off" (restart) the same message saves nothing
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### H9 — Model can't invent facts
+
+**Do**
+
+1. `tora 'I earn a decent amount from my 2 jobs'`
+2. `tora-mem`
+
+**Expect**
+
+- tora-mem stays empty even if the model proposed a number — it isn't in your message
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+## Accounts & Spendsy data (Phase 6A · 6B)
+
+Needs the Spendsy gateway running (auth on :8080/auth, finance on :8080/finance) and a real login. Restart TORA with $env:TORA_AUTH_MODE="optional" (and TORA_AUTH_URL / TORA_FINANCE_URL if your gateway is elsewhere). Get two tokens by logging in as two users; set $global:tok before tora calls (see helpers).
+
+### P1 — Who am I
+
+**Do**
+
+1. `Invoke-RestMethod http://127.0.0.1:8000/api/me | ConvertTo-Json`
+2. `$global:tok = '<user A token>'; tora-me`
+
+**Expect**
+
+- Without a token: signed_in false
+- With the token: signed_in true, your Spendsy user id, features.spendsy_data true
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P2 — Bad token is refused
+
+**Do**
+
+1. `$global:tok = 'not-a-real-token'; tora 'hi'`
+
+**Expect**
+
+- HTTP 401 “Your session has expired. Please sign in again.”
+- Stop the gateway and retry with a real token → HTTP 503 (never silently anonymous)
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P3 — Spending summary from your records
+
+**Do**
+
+1. `$global:tok = '<user A token>'; tora-new`
+2. `tora 'Where does my money go? Check my last 3 months of spending.'`
+3. `tora-trace`
+
+**Expect**
+
+- tora-trace: tools = spendsy_data
+- Totals match the Spendsy app for those months (transfers excluded); the current month is called partial
+- grounding.action is none or regenerated — never an invented total
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P4 — Category and recent transactions
+
+**Do**
+
+1. `tora 'How much did I spend on food in the last 3 months?'`
+2. `tora 'Show my 3 most recent transactions'`
+
+**Expect**
+
+- Food total equals the sum of Food transactions in the app
+- Three newest transactions with date, amount and category
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P5 — Stated vs recorded
+
+**Do**
+
+1. `tora 'My rent is 20k per month'`
+2. `tora 'Does my recorded rent match what I told you?'`
+
+**Expect**
+
+- TORA compares ₹20,000 (what you said) with the rent in your records and points out any difference
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P6 — Memory follows the account
+
+**Do**
+
+1. `tora-new`
+2. `tora 'What rent did I tell you I pay?'`
+3. `Invoke-RestMethod http://127.0.0.1:8000/api/me/memory -Headers @{Authorization="Bearer $global:tok"}`
+
+**Expect**
+
+- A brand-new conversation still answers ₹20,000
+- /api/me/memory lists the rent
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P7 — Other users can't see it
+
+**Do**
+
+1. `$a = $global:cid; $global:tok = '<user B token>'`
+2. `Invoke-RestMethod http://127.0.0.1:8000/api/conversations/$a -Headers @{Authorization="Bearer $global:tok"}`
+3. `tora-new; tora 'What rent do I pay and how much did I spend recently?'`
+
+**Expect**
+
+- The GET returns 404
+- User B's answer uses only user B's records and knows nothing about ₹20,000
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P8 — Anonymous users get no records
+
+**Do**
+
+1. `$global:tok = $null; tora-new`
+2. `tora 'Where does my money go? Check my last 3 months of spending.'`
+3. `tora-trace`
+
+**Expect**
+
+- No spendsy_data in the trace; TORA explains it can't see transactions without sign-in or answers generally
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P9 — Conversation list and cleanup
+
+**Do**
+
+1. `$global:tok = '<user A token>'`
+2. `Invoke-RestMethod http://127.0.0.1:8000/api/conversations -Headers @{Authorization="Bearer $global:tok"} | ConvertTo-Json -Depth 4`
+3. `Invoke-RestMethod -Method Delete http://127.0.0.1:8000/api/me/memory -Headers @{Authorization="Bearer $global:tok"}`
+4. `Invoke-RestMethod -Method Delete http://127.0.0.1:8000/api/me/data -Headers @{Authorization="Bearer $global:tok"}`
+
+**Expect**
+
+- The list shows user A's conversations with titles, newest first
+- After clearing, /api/me/memory is empty
+- After deleting data, the conversation list is empty
+
+- [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
+
+### P10 — Browser with a real login
+
+**Do**
+
+1. `Log in to Spendsy normally, open TORA`
+2. `Ask: Where does my money go this month?`
+3. `Log out, log in as another user, open TORA and ask: What rent did I tell you I pay?`
+
+**Expect**
+
+- First user gets figures from their records
+- Second user starts fresh (the old conversation id is ignored with a new conversation) and sees none of user A's facts
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
