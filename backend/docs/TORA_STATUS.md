@@ -1,0 +1,160 @@
+# TORA — status
+
+Generated from the code on 2026-09-17 by `python -m backend.status`. Everything under **Built** is read out of the running system (registered tools, engine operations, endpoints, intents, fact types, the rules library, the eval suite). **Partial** and **Open** are the judgement calls, each with a pointer to the code or test behind it.
+
+## At a glance
+
+|  | count |
+|---|---|
+| Tools registered | 8 |
+| Finance engine operations | 23 |
+| Tax operations | 8 |
+| HTTP endpoints | 20 |
+| Intents | 12 |
+| Remembered fact types | 35 |
+| Verified rules | 33 (checked 2026-09-17) |
+| Offline eval scenarios | 158 (254 turns) |
+| Backend tests | 1053 |
+| Frontend tests | 33 |
+
+## Built
+
+### Tools the planner can call
+
+| tool | what it does | sign-in |
+|---|---|---|
+| `calculator` | Perform deterministic mathematical calculations. Supports +, -, *, /, %, **, unary +/-, and parentheses. Use f | — |
+| `web_search` | Search the public web for current information, live loan/FD/gold rates, tax circulars, RBI guidelines, financi | — |
+| `web_fetch` | Fetch and extract readable plain text content from a specific public webpage URL (HTTP/HTTPS). Use this when y | — |
+| `research` | Multi-source verified research: searches the web, reads several pages, checks source authority (RBI/SEBI/offic | — |
+| `finance_calc` | Deterministic personal-finance calculator. Use for EMIs, loan prepayment/amortization, SIP and lump-sum growth | — |
+| `tax_calc` | Deterministic Indian income-tax calculator for resident individuals (tax years 2025-26, 2026-27): slab tax, st | — |
+| `rules_lookup` | Look up official Indian tax, RBI and consumer-protection rules from TORA's reviewed library: limits, rates, el | — |
+| `spendsy_data` | Read the signed-in user's OWN Spendsy transactions (read-only). Use for questions about what they actually ear | — |
+
+### Finance engine
+
+Deterministic operations on `finance_calc` — the model never does this arithmetic:
+
+`amortization` · `budget_plan` · `compound_growth` · `consolidation_check` · `debt_payoff` · `debt_rescue_plan` · `debt_snapshot` · `debt_to_income` · `emergency_fund` · `emi` · `financial_health_check` · `goal_plan` · `inflation_adjust` · `loan_tenure_choice` · `minimum_due_trap` · `net_worth` · `prepay_vs_invest` · `rent_vs_buy` · `required_sip` · `retirement_plan` · `savings_rate` · `sip_change_impact` · `sip_future_value`
+
+### Tax engine
+
+`compute_tax` · `compare_regimes` · `hra_exemption` · `house_property_income` · `capital_gains_tax` · `advance_tax_plan` · `itr_form_choice` · `tax_saving_finder`
+
+Backed by a rules library of 33 verified rules (`python -m backend.knowledge check` reports staleness and drift).
+
+### API
+
+| method | path | purpose |
+|---|---|---|
+| GET | `/` | Health check for FastAPI and LLM provider connectivity. |
+| GET | `/api/health` | Health check for FastAPI and LLM provider connectivity. |
+| GET | `/api/models` | List available models from the LLM provider. |
+| POST | `/api/chat` | Traced entry point (metadata-only traces; see backend/observability). |
+| POST | `/chat` | Traced entry point (metadata-only traces; see backend/observability). |
+| POST | `/api/chat/stream` | Same as /api/chat, streamed as Server-Sent Events: |
+| GET | `/api/metrics` | Aggregate, content-free TORA metrics since process start. |
+| GET | `/api/traces` | Recent per-turn traces (metadata only) |
+| GET | `/api/me` | Who TORA thinks is calling, and whether account features are on. |
+| GET | `/api/conversations` | The signed-in user's conversations, newest first. |
+| GET | `/api/me/memory` | Financial facts TORA remembers for this account (shared by all its conversations). |
+| DELETE | `/api/me/memory` | Forget every remembered financial fact for this account (transcripts are kept). |
+| DELETE | `/api/me/data` | Delete all of this account's TORA conversations and remembered facts. |
+| POST | `/api/documents` | Read a Form 16, salary slip, bank statement or AIS |
+| POST | `/api/documents/{doc_id}/confirm` | Save the chosen proposed facts from a parsed document into memory. |
+| POST | `/api/documents/{doc_id}/dismiss` | Forget a parsed document's summary. |
+| POST | `/api/feedback` | Thumbs up/down on an answer (optionally with a corrected answer) — used for later training. |
+| GET | `/api/conversations/{conversation_id}` | Transcript, remembered facts and topic state for one conversation. |
+| DELETE | `/api/conversations/{conversation_id}` | Delete a conversation (for signed-in users, account memory is kept; see /api/me/memory). |
+| DELETE | `/api/conversations/{conversation_id}/memory` | Forget all remembered financial facts but keep the transcript. |
+
+### Conversation and memory
+
+Intents: `general_qa`, `financial_qa`, `calculation`, `memory_recall`, `memory_update`, `memory_delete`, `research`, `research_followup`, `comparison`, `planning`, `what_if`, `clarification`
+
+Fact states: `current`, `historical`, `hypothetical`, `conditional`, `estimate`, `unknown`, `ambiguous`, `retracted` — with revision chains, previous values, and corrections held apart from changes over time.
+
+Conversation state tracks topics, their entities and the research gathered under each, so “what about Axis?” and “back to the home loan comparison” resolve without re-asking (`backend/state/conversation_state.py`).
+
+Remembered fact types:
+
+| category | facts |
+|---|---|
+| debt | `credit_card_apr`, `credit_card_debt`, `credit_card_min_due` |
+| expense | `commute`, `essential_expenses`, `food`, `insurance_premium`, `utilities` |
+| goal | `car_goal`, `house_goal` |
+| income | `income` |
+| investment | `epf`, `fixed_deposit`, `gold`, `mutual_funds`, `ppf`, `sip_monthly`, `stocks` |
+| loan | `car_loan_balance`, `car_loan_emi`, `car_loan_rate`, `education_loan_balance`, `education_loan_emi`, `education_loan_rate`, `gold_loan_balance`, `gold_loan_emi`, `gold_loan_rate`, `home_loan_balance`, `home_loan_emi`, `home_loan_rate`, `personal_loan_balance`, `personal_loan_emi`, `personal_loan_rate` |
+| rent | `rent` |
+| savings | `savings` |
+
+### Documents
+
+Uploads are parsed deterministically and their figures enter memory only after the user confirms: `ais`, `bank_statement`, `form16`, `salary_slip`. Identifiers (PAN, account numbers, phones, emails) are masked, and a document's text is treated as untrusted external data, never as instructions (`backend/documents/reader.py`).
+
+### Safety
+
+- Prompt-extraction and injection attempts are refused; fetched pages and uploads are quarantined as external data (live cases A14, X1-X3).
+- SSRF: loopback, link-local and private targets are blocked (`web_fetch`; live case B20).
+- Per-client rate limiting with Retry-After; request size, model name and temperature validated.
+- Accounts: `TORA_AUTH_MODE` off/optional/required; a user's conversations and memory are unreachable by anyone else (50-user isolation scenario).
+
+### Streaming
+
+`POST /api/chat/stream` emits `stage`, `complexity`, `tool`, `token`, `replace`, then `final` or `error`. Stages: understanding (“Understanding your question”), remembering (“Updating what I know about you”), planning (“Working out what to calculate”), calculating (“Running the numbers”), researching (“Checking sources”), reading_rules (“Looking up the rules”), reading_records (“Reading your Spendsy records”), writing (“Writing the answer”), checking (“Double-checking the figures”).
+
+The chat page renders them live: working panel with per-step ticks and engine summaries, smooth token reveal, Stop and Try again, engine and verification chips, follow-up suggestions (`frontend/src/pages/TORAPage.jsx`, `tora/sse.js`, `tora/markdown.jsx`).
+
+### Verification and testing
+
+- `python -m backend.check`: 1053 unit tests, 158 offline scenarios, the rules-library check.
+- Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 7, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 18, tool_selection 9.
+- `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
+- Live prompt suite and its results: `backend/docs/stress_test_report.md`.
+- Frontend: 33 tests under `frontend/src/tests/tora/`.
+
+### Configuration
+
+`TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
+
+## Partial — built, with a named gap
+
+| area | what exists | what's missing | evidence |
+|---|---|---|---|
+| Memory | current / historical / hypothetical / retracted states, revision chains, corrections kept apart from changes over time, per-fact previous values | confidence per fact, and temporal queries (“what was it in March?”) | `backend/context/financial.py` |
+| Answer fidelity | engines return ready comparison rows and pre-formatted rupee figures; the grounding check regenerates or annotates unsupported figures | locked-slot answers: the model writes prose around placeholders it cannot alter, so a wrong number becomes structurally impossible | `stress report findings 8-10; verification W04` |
+| Prompt size | one system prompt with all rules, ~6,000 tokens a turn | intent-sliced prompts: send only the sections the intent needs | `backend/prompts/tora.py; traces llm.prompt_tokens` |
+| What-if | per-engine scenarios (sip_change_impact, what_if_extra, prepay/rent-vs-buy, loan tenure) and hypothetical facts kept out of the profile | a general scenario engine: change several facts at once, re-run every relevant engine, compare baseline vs scenario | `backend/finance/, state kept in FinancialProfile.scenarios` |
+| Research | multi-source search, evidence extraction, credibility, conflict detection, per-topic research records and follow-ups | an autonomous re-research loop when evidence is thin, conflicting or stale | `backend/research/` |
+| Tax | two tax years, both regimes, 8 operations, a 33-rule library with staleness checks | broader coverage (more heads of income, more years, presumptive schemes) | `backend/finance/tax_extras.py, backend/knowledge/rules.json` |
+| Tool runtime | per-call timeouts, call ids, per-tool latency in metrics and traces, planning-time argument checks with a repair loop | retries and circuit breakers for a flaky tool | `backend/tools/executor.py` |
+| Observability | /api/metrics, /api/traces, an optional JSONL trace file, per-request traces with no personal content | a dashboard over them | `backend/observability/` |
+| Evaluation | python -m backend.check runs unit tests, the offline benchmark and the rules check | CI wiring so it runs on every push | `backend/check.py` |
+| Manual QA | a 149-test runbook covering every phase, including the streaming UI (V1-V11) | one full hands-on pass in a real browser, desktop and mobile | `backend/docs/manual_test_plan.md` |
+
+## Open — in priority order
+
+1. **Locked-slot answers.** The engine emits the numeric skeleton; the model writes prose around placeholders and cannot alter a figure. Attacks the failure mode the live run actually measured.
+2. **Intent-sliced prompts.** Fewer competing rules per turn: faster on CPU, less hedging.
+3. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.
+4. **General scenario engine.** Change several facts at once and re-run every relevant engine.
+5. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
+6. **Tool retries and circuit breakers.**
+7. **Broader tax coverage.**
+8. **Observability dashboard** over the existing metrics and traces.
+9. **CI wiring** for `backend.check`.
+
+## Known limits
+
+| limit | detail |
+|---|---|
+| Latency on CPU | median turn 140s, first token 97s, slowest 735s on 8 GB CPU-only with one model instance. The fast paths remove a planner call (1-4 min) from the commonest questions. |
+| Grounding derivations | the figure check accepts simple derivations of known values, so a wrong arithmetic result can still coincide with one. Fewer model-made figures is the fix. |
+| Small-model hedging | gemma4:e4b sometimes asks for input it already has (verification W04 asked which tax year although the tax engine had answered). |
+| Model memory pressure | one live turn was killed by the OS; the stream reported it and the UI offered Try again, which is the intended behaviour. |
+
+---
+
+Regenerate with `python -m backend.status`. If a row here disagrees with the code, the code wins — fix the generator, not the prose.
