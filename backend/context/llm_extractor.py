@@ -78,6 +78,16 @@ _FINANCE_HINT = re.compile(
     re.IGNORECASE,
 )
 _HINGLISH_FIRST_PERSON = re.compile(r"\b(?:mera|meri|mere|main|mai|mujhe|hum|humara|hamara)\b", re.IGNORECASE)
+# Calculation requests carry example / annual amounts that are easy to mis-file
+# (e.g. "6 lakh other income, 2 lakh gains on shares ... how much tax?").
+_CALC_REQUEST = re.compile(
+    r"(?<!after )(?<!post )(?<!pre )(?<!post-)(?<!pre-)\b(?:tax|taxes)\b|\b(?:regime|capital\s+gains?|surcharge|rebate)\b",
+    re.IGNORECASE,
+)
+_NOT_SALARY = re.compile(r"\b(?:other|rental|interest|dividend|side|freelance\s+side)\s+income\b|\bgains?\b|\bprofits?\b",
+                         re.IGNORECASE)
+_NOT_HOLDING = re.compile(r"\b(?:gains?|profits?|returns?|losses?|lost)\b", re.IGNORECASE)
+_HOLDINGS = {"mutual_funds", "fixed_deposit", "stocks", "gold", "ppf", "epf"}
 _WORD_NUMBERS = {"hazaar": 1_000, "hazar": 1_000, "thousand": 1_000, "grand": 1_000}
 
 
@@ -96,7 +106,7 @@ def should_try(message: str, rule_candidates: List[Dict[str, Any]]) -> bool:
     first_person = bool(_FIRST_PERSON.search(text) or _HINGLISH_FIRST_PERSON.search(text))
     if not first_person:
         return False
-    if re.search(r"\d\s*[*/+^×÷]\s*\d|\bcalculate\b", text, re.IGNORECASE):
+    if re.search(r"\d\s*[*/+^×÷]\s*\d|\bcalculate\b", text, re.IGNORECASE) or _CALC_REQUEST.search(text):
         return False
     if FactExtractor.classify_statement_status(text) != FactStatus.CURRENT.value:
         # what-if / future wording: not worth an extra model call for scenario-only facts
@@ -184,6 +194,15 @@ def validate_proposals(message: str, payload: Any) -> List[Dict[str, Any]]:
             if parsed is None or value <= 0 or abs(parsed - value) > max(1.0, 0.01 * value):
                 logger.info("LLM fact '%s' rejected: evidence parses to %s, proposed %s", name, parsed, value)
                 continue
+        # Look at the words around the evidence, not just the evidence itself.
+        at = lower_msg.find(evidence.lower())
+        around = lower_msg[max(0, at - 30): at + len(evidence) + 30]
+        if name == "income" and _NOT_SALARY.search(around):
+            logger.info("LLM fact 'income' rejected: not salary income")
+            continue
+        if name in _HOLDINGS and _NOT_HOLDING.search(around):
+            logger.info("LLM fact '%s' rejected: a gain/return, not a holding", name)
+            continue
         status = str(fact.get("status", "current")).lower()
         if status not in ("current", "hypothetical", "historical"):
             continue

@@ -129,3 +129,24 @@ def test_agent_skips_model_when_rules_succeed():
     llm = ExtractLLM([])
     asyncio.run(ToraAgent(llm_provider=llm).run("My salary is 80k per month", financial_context=FinancialProfile()))
     assert not any(c.startswith(EXTRACTOR_PREFIX[:30]) for c in llm.calls)
+
+
+T5_MESSAGE = ("I have 6 lakh other income, 2 lakh short-term gains on shares and "
+              "3 lakh long-term gains on equity funds. How much tax do I pay?")
+
+
+def test_tax_questions_skip_model_extraction():
+    assert not should_try(T5_MESSAGE, [])
+
+
+def test_gains_and_other_income_are_not_salary_or_holdings():
+    payload = {"facts": [
+        {"name": "income", "value": 600000, "status": "current", "evidence": "6 lakh"},
+        {"name": "stocks", "value": 200000, "status": "current", "evidence": "2 lakh"},
+        {"name": "mutual_funds", "value": 300000, "status": "current", "evidence": "3 lakh"},
+    ]}
+    msg = "I have 6 lakh other income, 2 lakh short-term gains on shares and 3 lakh long-term gains on equity funds"
+    assert validate_proposals(msg, payload) == []
+    ok = validate_proposals("I have 3 lakh in equity funds", {"facts": [
+        {"name": "mutual_funds", "value": 300000, "status": "current", "evidence": "3 lakh"}]})
+    assert [c["name"] for c in ok] == ["mutual_funds"]
