@@ -57,7 +57,7 @@ Run these first. If either fails, stop and fix before manual testing — the man
 
 **Expect**
 
-- 987 passed, 0 failed (warnings from FastAPI/anyio are fine)
+- 993 passed, 0 failed (warnings from FastAPI/anyio are fine)
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:
 
@@ -2191,6 +2191,6 @@ Off by default. Enable only with users' consent.
 
 **Expect**
 
-- Unit tests, offline benchmark (155/155) and rules check all pass: RELEASE GATE: PASSED
+- 993 unit tests, offline benchmark (155/155) and rules check all pass: RELEASE GATE: PASSED
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:

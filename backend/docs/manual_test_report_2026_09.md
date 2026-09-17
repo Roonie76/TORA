@@ -75,3 +75,12 @@ The runbook (`manual_test_plan.md`) was run against a live server: `uvicorn back
 - **T8:** needs the official tax calculator.
 - **R1–R7 with real search results:** web search is blocked from this machine.
 - **E1–E3:** the offline benchmark is 126/126; the full live benchmark was stopped in favour of this manual run.
+
+
+## Addendum — Phases 7–13 live check (17 September 2026, later the same day)
+
+See `phase_7_13_completion.md`, section "Live results". Summary:
+
+- **Routing and speed:** clear-cut questions now skip the planner and took 25–89 s instead of 120–193 s.
+- **New features checked live:** debt rescue, the minimum-due trap, prepay vs invest, the financial health check, rules-library answers with citations, property capital gains, HRA, ITR form choice and the Form 16 tax review all gave correct figures.
+- **Problems found and fixed:** 5 (listed in the completion note), with tests; the three affected checks were rerun and pass.
