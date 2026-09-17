@@ -313,3 +313,96 @@ def document_plan(message: str, documents: List[Dict[str, Any]]) -> Optional[Too
     if s.get("tax_year"):
         params["tax_year"] = s["tax_year"]
     return _plan("tax_calc", {"operation": "tax_saving_finder", "params": params}, "form16 tax review")
+
+# --- Debt rescue from remembered facts -------------------------------------------------
+# "How do I get out of debt?" is the case TORA exists for. Left to the planner, the model
+# often answers with its own arithmetic and ignores interest, so route it to the engine.
+_DEBT_RESCUE = re.compile(
+    r"\b(?:get|getting|come|coming|dig|climb|way)\s+out\s+of\s+(?:this\s+|my\s+|the\s+)?debts?\b"
+    r"|\bdebt[-\s]?free\b"
+    r"|\b(?:clear|repay|pay\s*off|pay\s*down|get\s*rid\s*of|tackle|attack)\s+(?:all\s+)?(?:my|these|those|the)\s+"
+    r"(?:debts?|loans?\s+and\s+cards?|credit\s*cards?\s+and\s+loans?)\b"
+    r"|\b(?:debt|repayment|payoff|pay[-\s]?off)\s+(?:rescue\s+)?plan\b"
+    r"|\bplan\s+to\s+(?:clear|repay|pay\s*off)\s+(?:my\s+)?debts?\b"
+    r"|\bhow\s+do\s+i\s+(?:escape|survive)\s+(?:this\s+)?debt\b",
+    re.IGNORECASE,
+)
+# Typical card minimum in India when the user hasn't said: 5% of the balance. Interest
+# rates are never assumed — without them the plan would understate the cost of waiting.
+MIN_DUE_FRACTION = 0.05
+DEBT_LABELS = {
+    "credit_card": "Credit card",
+    "personal_loan": "Personal loan",
+    "home_loan": "Home loan",
+    "car_loan": "Car loan",
+    "education_loan": "Education loan",
+    "gold_loan": "Gold loan",
+}
+
+
+def _facts(profile: Any) -> Dict[str, float]:
+    """name -> current value, for a FinancialProfile (or anything with iter_current_facts)."""
+    out: Dict[str, float] = {}
+    if profile is None or not hasattr(profile, "iter_current_facts"):
+        return out
+    for fact in profile.iter_current_facts():
+        try:
+            value = float(fact.value)
+        except (TypeError, ValueError):
+            continue
+        if value > 0:
+            out[fact.name] = value
+    return out
+
+
+def _debts_from_facts(facts: Dict[str, float]) -> Optional[List[Dict[str, Any]]]:
+    """Every known debt, or None when one of them is missing a figure the engine needs."""
+    debts: List[Dict[str, Any]] = []
+    balance = facts.get("credit_card_debt")
+    if balance:
+        if not facts.get("credit_card_apr"):
+            return None
+        debts.append({
+            "name": DEBT_LABELS["credit_card"],
+            "balance": balance,
+            "apr": facts["credit_card_apr"],
+            "min_payment": facts.get("credit_card_min_due") or round(balance * MIN_DUE_FRACTION),
+        })
+    for kind in ("personal_loan", "car_loan", "education_loan", "gold_loan", "home_loan"):
+        balance = facts.get(f"{kind}_balance")
+        emi = facts.get(f"{kind}_emi")
+        rate = facts.get(f"{kind}_rate")
+        if not balance and not emi:
+            continue
+        if not balance or not emi or not rate:
+            return None  # leaving a real debt out would make the plan look better than it is
+        debts.append({"name": DEBT_LABELS[kind], "balance": balance, "apr": rate, "min_payment": emi})
+    return debts
+
+
+def _essentials(facts: Dict[str, float]) -> Optional[float]:
+    if facts.get("essential_expenses"):
+        return facts["essential_expenses"]
+    parts = [facts[k] for k in ("rent", "food", "commute", "utilities") if facts.get(k)]
+    return sum(parts) if len(parts) >= 2 else None
+
+
+def profile_plan(message: str, intent: Any, profile: Any, available_tools: Optional[set] = None) -> Optional[ToolPlan]:
+    """A debt-rescue plan built from what TORA already knows, so the figures come from the engine."""
+    tools = available_tools if available_tools is not None else {"finance_calc"}
+    if "finance_calc" not in tools or not message or not _DEBT_RESCUE.search(normalize_message(message)):
+        return None
+    facts = _facts(profile)
+    income = facts.get("income")
+    debts = _debts_from_facts(facts)
+    essentials = _essentials(facts)
+    if not income or not debts or essentials is None or essentials >= income:
+        return None  # ask the user instead of inventing the missing half
+    params: Dict[str, Any] = {
+        "debts": debts,
+        "monthly_income": income,
+        "essential_expenses": essentials,
+    }
+    if facts.get("savings"):
+        params["current_savings"] = facts["savings"]
+    return _finance("debt_rescue_plan", params)

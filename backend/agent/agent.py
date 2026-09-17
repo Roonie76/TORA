@@ -14,7 +14,7 @@ from ..llm.base import (
 from ..prompts.tora import TORA_SYSTEM_PROMPT
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
-from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan
+from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan, profile_plan
 from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
@@ -352,6 +352,10 @@ class ToraAgent:
         ):
             usable = {t.name for t in self._planner._usable_tools()}
             candidate = fast_plan(message, intent, usable)
+            if candidate is None:
+                # "How do I get out of debt?" — build the plan from what TORA already knows,
+                # so the months and interest come from the engine, not the model's arithmetic.
+                candidate = profile_plan(message, intent, active_profile, usable)
             if candidate is None and conversation_state is not None and "tax_calc" in usable:
                 candidate = document_plan(message, conversation_state.documents)
             if candidate is not None:

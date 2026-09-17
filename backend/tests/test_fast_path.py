@@ -188,3 +188,80 @@ def test_introductions_skip_the_planner():
         "Hi I'm Ravi. Should I prepay my loan?",
     ):
         assert not _is_small_talk(text, general), text
+
+
+def _profile_with(**facts):
+    from backend.context.financial import FinancialProfile
+    profile = FinancialProfile()
+    categories = {"income": ("income", "monthly"), "essential_expenses": ("expense", "monthly"),
+                  "savings": ("savings", "lump_sum"), "credit_card_debt": ("debt", "lump_sum"),
+                  "credit_card_apr": ("debt", "interest_rate"), "credit_card_min_due": ("debt", "monthly"),
+                  "personal_loan_balance": ("loan", "lump_sum"), "personal_loan_emi": ("loan", "monthly"),
+                  "personal_loan_rate": ("loan", "interest_rate"), "rent": ("rent", "monthly"),
+                  "food": ("expense", "monthly")}
+    for name, value in facts.items():
+        category, period = categories[name]
+        profile.set_fact(name=name, value=value, category=category, period=period, turn=1)
+    return profile
+
+
+DEBT_FACTS = dict(income=88000, essential_expenses=40000, credit_card_debt=120000, credit_card_apr=40,
+                  credit_card_min_due=6000, personal_loan_balance=250000, personal_loan_emi=9000,
+                  personal_loan_rate=15, savings=60000)
+
+
+def test_debt_rescue_uses_remembered_facts():
+    from backend.planner.fast_path import profile_plan
+    plan = profile_plan("I'm stressed about these debts, how do I get out of debt?", None,
+                        _profile_with(**DEBT_FACTS), {"finance_calc"})
+    assert plan is not None and plan.steps[0].tool_name == "finance_calc"
+    params = plan.steps[0].arguments["params"]
+    assert plan.steps[0].arguments["operation"] == "debt_rescue_plan"
+    assert params["monthly_income"] == 88000 and params["essential_expenses"] == 40000
+    assert params["current_savings"] == 60000
+    assert {d["name"]: (d["balance"], d["apr"], d["min_payment"]) for d in params["debts"]} == {
+        "Credit card": (120000, 40, 6000),
+        "Personal loan": (250000, 15, 9000),
+    }
+
+
+def test_debt_rescue_falls_back_to_a_typical_card_minimum():
+    from backend.planner.fast_path import profile_plan
+    facts = {k: v for k, v in DEBT_FACTS.items() if k != "credit_card_min_due"}
+    plan = profile_plan("make me a plan to get out of debt", None, _profile_with(**facts), {"finance_calc"})
+    card = next(d for d in plan.steps[0].arguments["params"]["debts"] if d["name"] == "Credit card")
+    assert card["min_payment"] == 6000  # 5% of the balance
+
+
+def test_debt_rescue_adds_up_essentials_when_not_stated():
+    from backend.planner.fast_path import profile_plan
+    facts = {k: v for k, v in DEBT_FACTS.items() if k != "essential_expenses"}
+    plan = profile_plan("how do I become debt free?", None, _profile_with(rent=22000, food=9000, **facts),
+                        {"finance_calc"})
+    assert plan.steps[0].arguments["params"]["essential_expenses"] == 31000
+
+
+def test_debt_rescue_defers_to_the_planner_when_facts_are_missing():
+    from backend.planner.fast_path import profile_plan
+    message = "how do I get out of debt?"
+    assert profile_plan(message, None, _profile_with(income=88000, essential_expenses=40000), {"finance_calc"}) is None
+    no_income = {k: v for k, v in DEBT_FACTS.items() if k != "income"}
+    assert profile_plan(message, None, _profile_with(**no_income), {"finance_calc"}) is None
+    no_essentials = {k: v for k, v in DEBT_FACTS.items() if k != "essential_expenses"}
+    assert profile_plan(message, None, _profile_with(**no_essentials), {"finance_calc"}) is None
+    # a debt missing its interest rate goes to the planner: dropping it would flatter the plan,
+    # and guessing the rate would understate what the debt costs
+    no_loan_rate = {k: v for k, v in DEBT_FACTS.items() if k != "personal_loan_rate"}
+    assert profile_plan(message, None, _profile_with(**no_loan_rate), {"finance_calc"}) is None
+    no_card_apr = {k: v for k, v in DEBT_FACTS.items() if k != "credit_card_apr"}
+    assert profile_plan(message, None, _profile_with(**no_card_apr), {"finance_calc"}) is None
+    # and the tool has to be available
+    assert profile_plan(message, None, _profile_with(**DEBT_FACTS), {"calculator"}) is None
+
+
+def test_debt_rescue_ignores_unrelated_questions():
+    from backend.planner.fast_path import profile_plan
+    profile = _profile_with(**DEBT_FACTS)
+    for message in ("what is my total debt?", "should I take a consolidation loan?",
+                    "what is 5% of 1.2 lakh?", "how much tax will I pay?"):
+        assert profile_plan(message, None, profile, {"finance_calc"}) is None, message

@@ -4871,6 +4871,62 @@
       ]
     },
     {
+      "id": "debt-rescue-from-memory",
+      "category": "debt",
+      "description": "A rescue plan built from remembered debts, without a planner call",
+      "turns": [
+        {
+          "user": "My credit card balance is 1.2 lakh at 40% and the minimum due is 6000",
+          "expect": {
+            "profile": {
+              "credit_card_debt": 120000.0,
+              "credit_card_apr": 40.0,
+              "credit_card_min_due": 6000.0
+            }
+          }
+        },
+        {
+          "user": "I also have a personal loan of 2.5 lakh at 15% with EMI 9k",
+          "expect": {
+            "profile": {
+              "personal_loan_balance": 250000.0,
+              "personal_loan_emi": 9000.0,
+              "personal_loan_rate": 15.0
+            }
+          }
+        },
+        {
+          "user": "I earn 88k and my essential expenses are about 40k",
+          "expect": {
+            "profile": {
+              "income": 88000.0,
+              "essential_expenses": 40000.0
+            }
+          }
+        },
+        {
+          "user": "I'm stressed about these debts, how do I get out of debt?",
+          "answer": "Paying ₹48,000 a month you are debt-free in 9 months. Clear the credit card first: at 40% it costs the most.",
+          "expect": {
+            "intent": [
+              "planning"
+            ],
+            "tools": [
+              "finance_calc"
+            ],
+            "fast_path": true,
+            "tool_output": {
+              "finance_calc.operation": "debt_rescue_plan",
+              "finance_calc.status": "workable"
+            },
+            "system_contains": [
+              "People Under Debt Stress"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "id": "debt-shortfall",
       "category": "debt",
       "description": "Income can't cover minimums",

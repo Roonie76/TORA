@@ -80,9 +80,12 @@ def test_loan_types(message, expected):
 
 def test_forget_and_close_typed_loans():
     from backend.context.extractor import extract_memory_commands
-    assert {c["name"] for c in extract_memory_commands("forget my home loan")} == {"home_loan_emi", "home_loan_balance"}
+    assert {c["name"] for c in extract_memory_commands("forget my home loan")} == {"home_loan_emi", "home_loan_balance", "home_loan_rate"}
     closed = extract_memory_commands("I paid off my car loan")
-    assert {c["name"] for c in closed} == {"car_loan_emi", "car_loan_balance"} and all(c["closure"] for c in closed)
+    assert {c["name"] for c in closed} == {"car_loan_emi", "car_loan_balance", "car_loan_rate"}
+    assert all(c["closure"] for c in closed if not c.get("action"))
+    # the rate is removed rather than set to 0%
+    assert [c["name"] for c in closed if c.get("action") == "delete"] == ["car_loan_rate"]
 
 
 @pytest.mark.parametrize("message, expected", [

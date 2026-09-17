@@ -188,8 +188,8 @@ ENTITY_FACT_NAMES = (
     (("salary", "income", "earning", "earnings"), ("income",)),
     (("rent",), ("rent",)),
     (("savings", "saving", "emergency fund"), ("savings",)),
-    (("credit card", "card", "cc"), ("credit_card_debt", "credit_card_apr")),
-    (("emi", "loan", "loans"), ("personal_loan_emi", "personal_loan_balance")),
+    (("credit card", "card", "cc"), ("credit_card_debt", "credit_card_apr", "credit_card_min_due")),
+    (("emi", "loan", "loans"), ("personal_loan_emi", "personal_loan_balance", "personal_loan_rate")),
     (("mutual fund", "mutual funds", "mf"), ("mutual_funds",)),
     (("gold",), ("gold",)),
     (("car",), ("car_goal",)),
@@ -203,7 +203,7 @@ def _fact_names_in(text: str) -> List[str]:
     names: List[str] = []
     typed = _loan_types_in(lower)
     for loan in typed:
-        names += [f"{loan}_emi", f"{loan}_balance"]
+        names += [f"{loan}_emi", f"{loan}_balance", f"{loan}_rate"]
     for keywords, fact_names in ENTITY_FACT_NAMES:
         if typed and "loan" in keywords:
             continue  # "forget my home loan" must not also forget the personal loan
@@ -237,7 +237,10 @@ def extract_memory_commands(message: str) -> List[Dict[str, Any]]:
     if _CLOSED_CUES.search(text) and _FIRST_PERSON.search(text):
         names = _fact_names_in(text)
         closable = [n for n in names if n in ("credit_card_debt", "rent") or n.endswith(("_loan_emi", "_loan_balance"))]
-        return [
+        # A closed debt's interest rate is not "0%", it simply no longer applies.
+        stale_rates = [{"action": "delete", "name": n} for n in names
+                       if n.endswith("_rate") and any(c.startswith(n[: -len("_rate")]) for c in closable)]
+        return stale_rates + [
             {
                 "name": n,
                 "value": 0.0,
@@ -544,7 +547,8 @@ class FactExtractor:
                 r"\b(?:credit\s*card|cc\s*debt|cc\s*balance|card\s*balance|outstanding\s*balance|card\s*statement|statement|balance)\b[^\d\n]{0,50}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                 c_lower,
             )
-            if not cc_match and effective_entity == "debt" and _allows_loose_amount(clause_text):
+            min_due_phrase = re.search(r"\bmin(?:imum)?\.?\s*(?:amount\s*)?(?:due|payment|pay)\b", c_lower)
+            if not cc_match and effective_entity == "debt" and not min_due_phrase and _allows_loose_amount(clause_text):
                 amt = parse_inr_amount(c_lower)
                 if amt and amt >= 1000:
                     candidates.append({
@@ -569,12 +573,47 @@ class FactExtractor:
                     if "debt" not in detected_entities:
                         detected_entities.append("debt")
 
-            # 8. Credit Card APR / Interest rate
+            # 7c. Credit card minimum due ("minimum due 6000", "min payment of 6,000")
+            min_due_match = re.search(
+                r"\b(?:minimum|min\.?)\s*(?:amount\s*)?(?:due|payment|pay)\b[^\d\n]{0,20}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:(?:lakhs|lakh|lacs|lac|thousand|grand|k)\b)?)"
+                r"|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:(?:lakhs|lakh|lacs|lac|thousand|grand|k)\b)?)\s*(?:as\s+|is\s+)?(?:the\s+)?(?:minimum|min\.?)\s*(?:amount\s*)?(?:due|payment)\b",
+                c_lower,
+            )
+            if min_due_match and not _TYPED_LOAN.search(c_lower):
+                amt = parse_inr_amount(min_due_match.group(1) or min_due_match.group(2))
+                if amt and 100 <= amt <= 1000000:
+                    candidates.append({
+                        "name": "credit_card_min_due",
+                        "value": amt,
+                        "category": "debt",
+                        "period": "monthly",
+                        "status": clause_status,
+                    })
+                    if "debt" not in detected_entities:
+                        detected_entities.append("debt")
+
+            # 8. Interest rate: a card APR, or the rate on a named loan
             apr_match = re.search(
                 r"(\d+(?:\.\d+)?)\s*%\s*(?:apr|annual|interest|p\.a\.|per\s*annum)?",
                 c_lower,
             )
-            if apr_match and ("apr" in c_lower or "debt" in detected_entities):
+            loan_for_rate = _loan_types_in(c_lower)
+            if apr_match and loan_for_rate and "credit card" not in c_lower:
+                try:
+                    rate = float(apr_match.group(1))
+                    if 1 <= rate <= 60:
+                        candidates.append({
+                            "name": f"{loan_for_rate[0]}_rate",
+                            "value": rate,
+                            "category": "loan",
+                            "period": "interest_rate",
+                            "status": clause_status,
+                        })
+                        if "loan" not in detected_entities:
+                            detected_entities.append("loan")
+                except ValueError:
+                    pass
+            elif apr_match and ("apr" in c_lower or "debt" in detected_entities):
                 try:
                     rate = float(apr_match.group(1))
                     if 5 <= rate <= 60:
@@ -589,6 +628,26 @@ class FactExtractor:
                             detected_entities.append("debt")
                 except ValueError:
                     pass
+
+            # 8b. Essential monthly expenses ("my essential expenses are about 40k")
+            essentials_match = re.search(
+                r"\b(?:essential|essentials|basic|necessary|living|household|monthly)\s*(?:monthly\s*)?(?:expenses?|spending|costs?|outgoings?)\b"
+                r"[^\d\n]{0,25}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:(?:lakhs|lakh|lacs|lac|thousand|grand|l|k)\b)?)"
+                r"|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:(?:lakhs|lakh|lacs|lac|thousand|grand|l|k)\b)?)\s*(?:a\s*month\s*)?(?:on|for)\s*(?:my\s*)?(?:essentials|essential\s*expenses|basic\s*expenses|living\s*expenses)\b",
+                c_lower,
+            )
+            if essentials_match:
+                amt = parse_inr_amount(essentials_match.group(1) or essentials_match.group(2))
+                if amt and 500 <= amt <= 10000000:
+                    candidates.append({
+                        "name": "essential_expenses",
+                        "value": amt,
+                        "category": "expense",
+                        "period": "monthly",
+                        "status": clause_status,
+                    })
+                    if "expense" not in detected_entities:
+                        detected_entities.append("expense")
 
             # 9. Savings / Emergency Fund
             savings_match = re.search(
