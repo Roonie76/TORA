@@ -107,3 +107,26 @@ def test_negative_amount_note_tells_the_model_not_to_confirm():
     note = _negative_amount_note("My salary is -50000 per month")
     assert "nothing was recorded" in note and "Ask the user what they meant" in note
     assert _negative_amount_note("My salary is 50000 per month") == ""
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("My salary is 75k. Actually 82k.", [("income", 75000.0, "historical"), ("income", 82000.0, "current")]),
+    ("My rent is 20k. Actually 25k.", [("rent", 20000.0, "historical"), ("rent", 25000.0, "current")]),
+    ("I earn 50k. No wait I earn 5 lakh a month. Actually 50k.",
+     [("income", 50000.0, "historical"), ("income", 50000.0, "current")]),
+    ("I used to earn 75k, but now 82k", [("income", 75000.0, "historical"), ("income", 82000.0, "current")]),
+])
+def test_same_turn_correction_stores_the_corrected_value(message, expected):
+    """The corrected half is often a bare amount ('Actually 82k') — it must still land."""
+    from backend.context.extractor import FactExtractor
+
+    got = [(c["name"], c["value"], c["status"]) for c in FactExtractor.extract_candidate_facts(message)]
+    assert got == expected
+
+
+def test_a_question_after_actually_is_not_a_correction():
+    from backend.context.extractor import FactExtractor
+
+    got = [(c["name"], c["value"], c["status"])
+           for c in FactExtractor.extract_candidate_facts("My salary is 75k. Actually, what is 20% of 60000?")]
+    assert got == [("income", 75000.0, "historical")]

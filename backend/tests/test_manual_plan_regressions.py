@@ -117,3 +117,15 @@ def test_forget_covers_every_remembered_kind(message, expected):
     from backend.context.extractor import extract_memory_commands
     names = {c["name"] for c in extract_memory_commands(message) if c.get("action") == "delete"}
     assert names == expected
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("मेरी सैलरी 60 हजार है", {"income": 60000.0}),
+    ("मेरा किराया २०००० है", {"rent": 20000.0}),
+    ("मेरी आमदनी 1.2 लाख है", {"income": 120000.0}),
+])
+def test_hindi_in_devanagari_is_remembered(message, expected):
+    """Live run: a Hindi salary message was answered with 'noted' but nothing was stored."""
+    from backend.context.extractor import FactExtractor
+    got = {c["name"]: c["value"] for c in FactExtractor.extract_candidate_facts(message)}
+    assert got == expected

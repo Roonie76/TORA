@@ -103,6 +103,16 @@ _FORGET_REQUEST = re.compile(
 )
 
 
+def _empty_memory_note(intent: Any, profile: Any) -> str:
+    """Asked to recall something with nothing stored: say so, never invent a figure."""
+    if getattr(intent, "intent", None) != Intent.MEMORY_RECALL:
+        return ""
+    if not isinstance(profile, FinancialProfile) or not profile.is_empty():
+        return ""
+    return ("\n\n## Memory\n- Nothing at all is recorded for this user yet. Say plainly that you do not have that "
+            "figure and ask for it. Never state a number for a fact you were not given, not even as an example.")
+
+
 def _negative_amount_note(message: str) -> str:
     """A negative figure is a typo or a misunderstanding; nothing was stored, so don't confirm it."""
     from ..context.extractor import negated_amounts
@@ -498,7 +508,7 @@ class ToraAgent:
 
         # 3. Build Initial Context
         account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands)
-                        + _negative_amount_note(message))
+                        + _negative_amount_note(message) + _empty_memory_note(intent, active_profile))
         if account_note:
             system_prompt = (system_prompt or self.default_system_prompt) + account_note
         messages = self._build_messages(

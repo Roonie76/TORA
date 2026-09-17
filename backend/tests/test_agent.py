@@ -654,3 +654,19 @@ def test_forget_note_only_when_nothing_matched():
     assert _forget_note("I paid off my car loan", [{"name": "car_loan_emi", "closure": True}]) == ""
     assert _forget_note("what is my rent?", []) == ""
     assert _forget_note("how do I forget about money stress?", []) == ""
+
+
+def test_empty_memory_note_for_recall_with_nothing_stored():
+    """A live edge case answered 'Your rent is ₹20,000' in a brand-new conversation."""
+    from backend.agent.agent import _empty_memory_note
+    from backend.context.financial import FinancialProfile
+    from backend.state.intent import Intent, IntentResult
+
+    empty, filled = FinancialProfile(), FinancialProfile()
+    filled.set_fact(name="rent", value=20000, category="rent", period="monthly", turn=1)
+    recall = IntentResult(Intent.MEMORY_RECALL, [], None)
+
+    note = _empty_memory_note(recall, empty)
+    assert "Nothing at all is recorded" in note and "Never state a number" in note
+    assert _empty_memory_note(recall, filled) == ""
+    assert _empty_memory_note(IntentResult(Intent.FINANCIAL_QA, [], None), empty) == ""

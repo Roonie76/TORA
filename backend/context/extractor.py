@@ -400,9 +400,17 @@ class FactExtractor:
                 context_entity = "loan"
 
         # Helper to extract facts for a given sub-clause
-        def parse_clause(clause_text: str, clause_status: str, inherited_entity: Optional[str] = None) -> List[str]:
+        def parse_clause(clause_text: str, clause_status: str, inherited_entity: Optional[str] = None,
+                         allow_loose: bool = False) -> List[str]:
             c_lower = clause_text.lower()
             detected_entities = []
+
+            def loose_ok(text: str) -> bool:
+                # The corrected half of "My salary is 75k. Actually 82k." is a bare amount, but the
+                # split already told us what it corrects, so it may be attributed.
+                if allow_loose and not _is_question(text) and not _ARITHMETIC.search(text):
+                    return True
+                return _allows_loose_amount(text)
 
             # 1. Detect entity clues in clause
             if any(w in c_lower for w in ("salary", "income", "take home", "earn", "earning", "ctc", "package")):
@@ -429,7 +437,7 @@ class FactExtractor:
             if (
                 not inc_match
                 and effective_entity == "income"
-                and _allows_loose_amount(clause_text)
+                and loose_ok(clause_text)
                 and not re.search(r"\b(?:other|rental|interest|dividend|side)\s+income|\bgains?\b", c_lower)
             ):
                 amt = parse_inr_amount(c_lower)
@@ -466,7 +474,7 @@ class FactExtractor:
                 r"(?:\b(?:rent)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:rent))",
                 c_lower,
             )
-            if not rent_match and effective_entity == "rent" and _allows_loose_amount(clause_text):
+            if not rent_match and effective_entity == "rent" and loose_ok(clause_text):
                 amt = parse_inr_amount(c_lower)
                 if amt and 1000 <= amt <= 500000:
                     candidates.append({
@@ -575,7 +583,7 @@ class FactExtractor:
                 c_lower,
             )
             min_due_phrase = re.search(r"\bmin(?:imum)?\.?\s*(?:amount\s*)?(?:due|payment|pay)\b", c_lower)
-            if not cc_match and effective_entity == "debt" and not min_due_phrase and _allows_loose_amount(clause_text):
+            if not cc_match and effective_entity == "debt" and not min_due_phrase and loose_ok(clause_text):
                 amt = parse_inr_amount(c_lower)
                 if amt and amt >= 1000:
                     candidates.append({
@@ -778,7 +786,7 @@ class FactExtractor:
             if len(parts) >= 2:
                 e1_list = parse_clause(parts[0], FactStatus.HISTORICAL.value)
                 inherited = e1_list[0] if e1_list else None
-                parse_clause(parts[1], FactStatus.CURRENT.value, inherited_entity=inherited)
+                parse_clause(parts[1], FactStatus.CURRENT.value, inherited_entity=inherited, allow_loose=True)
                 return candidates
 
         # Check for same-turn corrections (e.g. "My salary is ₹75,000. Actually, it is ₹82,000.")
@@ -787,7 +795,7 @@ class FactExtractor:
             if len(parts) >= 2:
                 e1_list = parse_clause(parts[0], FactStatus.HISTORICAL.value)
                 inherited = e1_list[0] if e1_list else None
-                parse_clause(parts[1], FactStatus.CURRENT.value, inherited_entity=inherited)
+                parse_clause(parts[1], FactStatus.CURRENT.value, inherited_entity=inherited, allow_loose=True)
                 return candidates
 
         # Default parse whole message with overall status

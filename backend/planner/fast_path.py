@@ -31,6 +31,12 @@ _PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*(?:%|percent\b|per\s*cent\b)", re.IGNO
 _YEARS = re.compile(r"(\d+(?:\.\d+)?)\s*(?:years?|yrs?)\b", re.IGNORECASE)
 _MONTHS = re.compile(r"(\d+)\s*(?:months?|mos?)\b", re.IGNORECASE)
 _TAX_YEAR = re.compile(r"\b(20\d{2})\s*[-–/]\s*(\d{2})\b")
+# "ok thanks. what's 18% of 2,35,000?" — a lead-in must not push the question to the planner.
+_PLEASANTRY = re.compile(
+    r"^(?:(?:ok(?:ay)?|okey|cool|great|thanks?(?:\s+you)?|thank\s+you|got\s+it|nice|alright|right|sure|hmm+|"
+    r"and|also|btw|by\s+the\s+way|tora)[\s,.!]+)+",
+    re.IGNORECASE,
+)
 _PURE_MATH = re.compile(r"^[\d\s.,+\-*/x×÷()^%]+$")
 _FOLLOWUP_REF = re.compile(
     r"\b(?:that|this(?!\s+(?:year|month|fy|financial\s+year|tax\s+year))|same|it|those|above|previous|my\s+loan|the\s+loan)\b",
@@ -107,7 +113,7 @@ def fast_plan(message: str, intent: Any = None, available_tools: Optional[set] =
     """Return a ready plan for clear-cut requests, or None to use the planner."""
     if not message or len(message) > 400:
         return None
-    text = normalize_message(message.strip())
+    text = _PLEASANTRY.sub("", normalize_message(message.strip()), count=1).strip()
     lower = text.lower()
     tools = available_tools if available_tools is not None else {"calculator", "finance_calc", "tax_calc", "rules_lookup"}
     if _FOLLOWUP_REF.search(lower) and not re.search(r"\bwhat\s+is\b", lower[:10]):

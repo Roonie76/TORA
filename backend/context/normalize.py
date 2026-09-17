@@ -1,6 +1,7 @@
 """
 Light, conservative text normalisation used before rule-based extraction and
-intent classification (Phase 5B): common typos and everyday Hinglish.
+intent classification (Phase 5B): common typos, everyday Hinglish and Hindi
+written in Devanagari.
 
 It only rewrites whole words/phrases from fixed tables, so English input is
 left untouched. The original message is still what gets stored and shown.
@@ -8,6 +9,35 @@ left untouched. The original message is still what gets stored and shown.
 
 import re
 from typing import List, Tuple
+
+# Hindi written in Devanagari: digits and the words that carry money facts.
+_DEVANAGARI_DIGITS = str.maketrans("०१२३४५६७८९", "0123456789")
+
+_HINDI: List[Tuple[str, str]] = [
+    ("हज़ार", "thousand"),      # hazaar
+    ("हजार", "thousand"),
+    ("लाख", "lakh"),
+    ("करोड़", "crore"),
+    ("करोड", "crore"),
+    ("सैलरी", "salary"),        # salary
+    ("वेतन", "salary"),              # vetan
+    ("तनख्वाह", "salary"),
+    ("आमदनी", "income"),
+    ("किराया", "rent"),
+    ("बचत", "savings"),
+    ("खर्च", "expenses"),
+    ("कर्ज़", "loan"),
+    ("कर्ज", "loan"),
+    ("किस्त", "emi"),
+    ("मेरी", "my"),
+    ("मेरा", "my"),
+    ("मुझे", "me"),
+    ("भूल जाओ", "forget"),
+    ("कितना", "how much"),
+    ("कितनी", "how much"),
+    ("हैं", " "),
+    ("है", " "),
+]
 
 _PHRASES: List[Tuple[str, str]] = [
     # Hinglish phrases (longest first)
@@ -48,7 +78,11 @@ _TRAILING_HAI = re.compile(r"\s+(?:hai|hain|hoon|hu|tha|thi)\b", re.IGNORECASE)
 def normalize_message(text: str) -> str:
     if not text:
         return text
-    out = text
+    out = text.translate(_DEVANAGARI_DIGITS)
+    for hindi, english in _HINDI:
+        if hindi in out:
+            out = out.replace(hindi, english)
+    out = re.sub(r"\s{2,}", " ", out).strip()
     for rx, repl in _COMPILED:
         out = rx.sub(repl, out)
     out = _TRAILING_HAI.sub("", out)

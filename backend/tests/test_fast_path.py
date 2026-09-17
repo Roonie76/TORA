@@ -290,3 +290,18 @@ def test_tax_from_memory_defers_when_the_case_is_not_plain_salary():
     ):
         assert profile_plan(message, None, profile, {"tax_calc", "finance_calc"}) is None, message
     assert profile_plan("what is my tax?", None, _profile_with(rent=20000), {"tax_calc"}) is None
+
+
+@pytest.mark.parametrize("message", [
+    "ok thanks. what's 18% of 2,35,000?",
+    "thanks! what is 18% of 2,35,000?",
+    "great, what's 18% of 2,35,000?",
+    "Also, what's 18% of 2,35,000?",
+])
+def test_a_lead_in_does_not_push_a_clear_question_to_the_planner(message):
+    """Live run: 'ok thanks. what's 18% of 2,35,000?' called the planner and a web search."""
+    from backend.planner.fast_path import fast_plan
+    plan = fast_plan(message, IntentResult(Intent.CALCULATION, [], None),
+                     {"calculator", "finance_calc", "tax_calc", "rules_lookup"})
+    assert plan is not None and plan.steps[0].tool_name == "calculator"
+    assert plan.steps[0].arguments["expression"] == "18.0 / 100 * 235000"
