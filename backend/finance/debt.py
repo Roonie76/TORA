@@ -235,6 +235,18 @@ def debt_rescue_plan(
         },
         "what_if_extra": what_if,
         "savings_move": savings_move,
+        # Rupee figures written out, so the answer copies them instead of formatting
+        # large numbers itself (a live run turned ₹3,70,000 into "₹37 Lakh").
+        "figures": {
+            "total_debt": inr(snapshot["total_debt"]),
+            "minimum_payments": inr(mins),
+            "monthly_budget_for_debt": inr(budget),
+            "extra_over_minimums": inr(max(0.0, budget - mins)),
+            "interest_on_this_plan": inr(best["total_interest"]),
+            "interest_if_minimums_only": (inr(minimum_only["total_interest"]) if minimum_only else None),
+            "essentials": inr(essentials),
+            "income": inr(income),
+        },
         "actions": actions,
         "summary": (f"With {inr(budget)} a month for debts, the {recommended} method makes you debt-free in "
                     f"{best['months_to_debt_free']} months with about {inr(best['total_interest'])} interest."),

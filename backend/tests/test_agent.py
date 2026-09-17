@@ -647,9 +647,17 @@ if __name__ == "__main__":
 def test_forget_note_only_when_nothing_matched():
     """TORA must not claim to have deleted a fact it never had."""
     from backend.agent.agent import _forget_note
+    from backend.context.financial import FinancialProfile
+
+    profile = FinancialProfile()
+    profile.set_fact(name="rent", value=20000, category="rent", period="monthly", turn=1)
 
     assert "nothing matching it is stored" in _forget_note("forget my SIP", [])
-    assert "Never claim to have deleted" in _forget_note("please delete my rent", [])
+    assert "Never claim to have deleted" in _forget_note("please delete my gym membership", [])
+    # the words matched a fact name, but that fact was never stored for this user
+    assert _forget_note("forget my SIP", [{"action": "delete", "name": "sip_monthly"}], profile)
+    # and when it is stored, the note stays out of the way
+    assert _forget_note("forget my rent", [{"action": "delete", "name": "rent"}], profile) == ""
     assert _forget_note("forget my SIP", [{"action": "delete", "name": "sip_monthly"}]) == ""
     assert _forget_note("I paid off my car loan", [{"name": "car_loan_emi", "closure": True}]) == ""
     assert _forget_note("what is my rent?", []) == ""

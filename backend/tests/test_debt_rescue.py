@@ -145,3 +145,23 @@ def test_consolidation_comparison_rows_are_consistent():
     assert abs((money(rows["Total cost (interest + fees)"]["current"])
                 - money(rows["Total cost (interest + fees)"]["consolidation"])) - out["net_saving"]) <= 1
     assert int(rows["Months to clear"]["consolidation"]) == out["new_loan_months_same_outflow"]
+
+
+def test_rescue_plan_writes_out_its_rupee_figures():
+    """A live run turned ₹3,70,000 into '₹37 Lakh'; the answer now copies these strings."""
+    from backend.finance.debt import debt_rescue_plan
+
+    out = debt_rescue_plan(
+        debts=[{"name": "Credit card", "balance": 120000, "apr": 40, "min_payment": 6000},
+               {"name": "Personal loan", "balance": 250000, "apr": 15, "min_payment": 9000}],
+        monthly_income=88000, essential_expenses=40000, current_savings=60000,
+    )
+    figures = out["figures"]
+    assert figures["total_debt"] == "₹3,70,000"
+    assert figures["minimum_payments"] == "₹15,000"
+    assert figures["monthly_budget_for_debt"] == "₹48,000"
+    assert figures["extra_over_minimums"] == "₹33,000"
+    assert figures["income"] == "₹88,000" and figures["essentials"] == "₹40,000"
+    # every figure is the engine's own number, written in the Indian system
+    assert figures["interest_on_this_plan"].startswith("₹")
+    assert figures["interest_if_minimums_only"] == "₹1,40,074"

@@ -124,10 +124,18 @@ def _negative_amount_note(message: str) -> str:
             "treating it as a positive number.")
 
 
-def _forget_note(message: str, memory_commands: List[Dict[str, Any]]) -> str:
+def _forget_note(message: str, memory_commands: List[Dict[str, Any]], profile: Any = None) -> str:
+    """Nothing to delete — either the words matched no fact, or the named facts were never stored."""
     if not _FORGET_REQUEST.search(message or ""):
         return ""
-    if any(c.get("action") in ("delete", "clear") for c in memory_commands):
+    targets = [c["name"] for c in memory_commands if c.get("action") == "delete" and c.get("name")]
+    if any(c.get("action") == "clear" for c in memory_commands):
+        return ""
+    if targets and isinstance(profile, FinancialProfile):
+        stored = {f.name for f in profile.iter_current_facts()}
+        if any(name in stored for name in targets):
+            return ""
+    elif targets:
         return ""
     return ("\n\n## Memory\n- The user asked you to forget something, but nothing matching it is stored. Say you "
             "have nothing recorded for it and ask what exactly to remove. Never claim to have deleted or removed "
@@ -507,7 +515,7 @@ class ToraAgent:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
 
         # 3. Build Initial Context
-        account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands)
+        account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands, active_profile)
                         + _negative_amount_note(message) + _empty_memory_note(intent, active_profile))
         if account_note:
             system_prompt = (system_prompt or self.default_system_prompt) + account_note
