@@ -1,3 +1,4 @@
+import json
 import os
 import time
 import logging
@@ -210,6 +211,75 @@ class OllamaProvider(LLMProvider):
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             return await client.post(f"{self.host}/api/chat", json=payload)
 
+    async def _generate_streaming(self, payload: Dict[str, Any], target_model: str, opts: Dict[str, Any],
+                                  on_token) -> LLMResponse:
+        """Same as generate() but forwards visible text chunks to `on_token` as they arrive."""
+        payload = dict(payload, stream=True)
+        started = time.monotonic()
+        parts: List[str] = []
+        final: Dict[str, Any] = {}
+
+        async def run(client: httpx.AsyncClient, body: Dict[str, Any]) -> Optional[str]:
+            async with client.stream("POST", f"{self.host}/api/chat", json=body) as response:
+                if response.status_code != 200:
+                    return (await response.aread()).decode("utf-8", "replace")
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except ValueError:
+                        continue
+                    if chunk.get("error"):
+                        raise LLMResponseError(message=f"Ollama error: {chunk['error']}", detail=chunk["error"])
+                    text = (chunk.get("message") or {}).get("content") or ""
+                    if text:
+                        parts.append(text)
+                        await on_token(text)
+                    if chunk.get("done"):
+                        final.update(chunk)
+                return None
+
+        try:
+            if self._client:
+                error = await run(self._client, payload)
+            else:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    error = await run(client, payload)
+                    if error is not None and "think" in payload and "think" in error.lower():
+                        self._no_think_models.add(target_model)
+                        payload.pop("think", None)
+                        error = await run(client, payload)
+            if error is not None and self._client and "think" in payload and "think" in error.lower():
+                self._no_think_models.add(target_model)
+                payload.pop("think", None)
+                error = await run(self._client, payload)
+            if error is not None:
+                raise LLMResponseError(message=f"Ollama error: {error}. Ensure model '{target_model}' is pulled.",
+                                       detail=error)
+        except httpx.TimeoutException as e:
+            raise LLMTimeoutError(f"Ollama request timed out after {self.timeout}s: {e}") from e
+        except httpx.ConnectError as e:
+            raise LLMConnectionError(
+                f"Could not connect to Ollama at {self.host}. Make sure Ollama is running (`ollama serve`)."
+            ) from e
+        except (LLMResponseError, LLMProviderError):
+            raise
+        except Exception as e:
+            raise LLMProviderError(f"Error communicating with Ollama: {str(e)}") from e
+
+        content = "".join(parts)
+        done_reason = final.get("done_reason", "")
+        if not content and done_reason == "length":
+            raise LLMResponseError(message="LLM response was truncated due to context length limits.",
+                                   detail="done_reason=length")
+        if content and done_reason == "length" and opts.get("num_predict"):
+            tail = " …\n\n(Answer shortened — ask me to continue for more detail.)"
+            content = content.rstrip() + tail
+            await on_token(tail)
+        record_llm_usage((time.monotonic() - started) * 1000, final, target_model)
+        return LLMResponse(content=content, model=target_model, done=True, raw=final)
+
     async def generate(
         self,
         messages: List[Dict[str, str]],
@@ -250,6 +320,10 @@ class OllamaProvider(LLMProvider):
             think = options["think"]
         if think is not None and target_model not in self._no_think_models:
             payload["think"] = think
+
+        on_token = options.get("on_token") if options else None
+        if callable(on_token) and not payload.get("format"):
+            return await self._generate_streaming(payload, target_model, opts, on_token)
 
         started = time.monotonic()
         try:

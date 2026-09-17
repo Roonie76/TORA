@@ -1,3 +1,5 @@
+import asyncio
+import json
 import os
 import time
 import threading
@@ -5,6 +7,7 @@ from collections import defaultdict, deque
 from typing import Optional, List, Dict, Any, Deque
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 
@@ -42,6 +45,8 @@ from .state import SessionStore, is_valid_conversation_id
 from .documents import DocumentError, MAX_BYTES as MAX_DOCUMENT_BYTES, parse_document
 from .observability import TelemetryHub, conversation_ref, start_trace
 from .observability import training_log
+from .observability import progress
+from .agent.suggestions import suggest
 
 load_dotenv()
 
@@ -66,6 +71,7 @@ MAX_HISTORY_ITEMS: int = _env_int("TORA_MAX_HISTORY_ITEMS", 200)
 MAX_MODEL_NAME_CHARS: int = 128
 TOOL_TIMEOUT_SECONDS: float = _env_float("TORA_TOOL_TIMEOUT_SECONDS", 30.0)
 RATE_LIMIT_PER_MINUTE: int = _env_int("TORA_RATE_LIMIT_PER_MINUTE", 30)
+STREAM_KEEPALIVE_SECONDS: float = _env_float("TORA_STREAM_KEEPALIVE_SECONDS", 15.0)
 DEFAULT_CORS_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173"
 CORS_ORIGINS: List[str] = [
     o.strip() for o in os.getenv("TORA_CORS_ORIGINS", DEFAULT_CORS_ORIGINS).split(",") if o.strip()
@@ -202,6 +208,9 @@ class ChatResponse(BaseModel):
     intent: Optional[str] = None
     grounding: Optional[Dict[str, Any]] = None
     turn: Optional[int] = None
+    tools: Optional[List[Dict[str, Any]]] = None
+    suggestions: Optional[List[str]] = None
+    complexity: Optional[str] = None
 
 
 @app.get("/")
@@ -251,6 +260,52 @@ async def chat(request: ChatRequest, http_request: Request):
         trace.conversation_ref = conversation_ref(result.conversation_id)
     telemetry.finish(trace, status="ok", http_status=200)
     return result
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatRequest, http_request: Request):
+    """
+    Same as /api/chat, streamed as Server-Sent Events:
+    stage / complexity / tool / token / replace events, then `final` (the ChatResponse) or `error`.
+    Closing the connection stops the turn (nothing is saved).
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def worker() -> None:
+        token = progress.install(queue)
+        try:
+            result = await chat(request, http_request)
+            queue.put_nowait({"type": "final", **result.model_dump()})
+        except HTTPException as exc:
+            queue.put_nowait({"type": "error", "status": exc.status_code, "detail": exc.detail})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            queue.put_nowait({"type": "error", "status": 500, "detail": "Something went wrong. Please try again."})
+        finally:
+            progress.uninstall(token)
+            queue.put_nowait(None)
+
+    task = asyncio.create_task(worker())
+
+    async def events():
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=STREAM_KEEPALIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                if event is None:
+                    break
+                yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 async def _chat(request: ChatRequest, http_request: Request, identity: Optional[Identity] = None):
@@ -354,6 +409,7 @@ async def _chat(request: ChatRequest, http_request: Request, identity: Optional[
             done=agent_response.done,
             intent=_intent_value(agent_response),
             grounding=_grounding_summary(agent_response),
+            **_response_extras(agent_response),
         )
 
     except ValueError as e:
@@ -391,6 +447,29 @@ def _grounding_summary(agent_response) -> Optional[Dict[str, Any]]:
         "action": g.get("action"),
         "checked": g.get("checked"),
         "unsupported": [c["text"] for c in g.get("unsupported", [])],
+    }
+
+
+def _response_extras(agent_response) -> Dict[str, Any]:
+    """UI extras: which engines ran (with a one-line summary) and follow-up suggestions."""
+    tools: List[Dict[str, Any]] = []
+    ctx = getattr(agent_response, "tool_context", None)
+    for r in (ctx.results if ctx else []):
+        out = r.output if isinstance(r.output, dict) else {}
+        tools.append({
+            "name": r.tool_name,
+            "label": progress.TOOL_LABELS.get(r.tool_name, r.tool_name),
+            "operation": out.get("operation"),
+            "ok": not r.is_error,
+            "summary": (out.get("summary") or (f"{out['rules'][0]['title']} — {out['rules'][0]['citation']}"
+                                               if out.get("rules") else None)),
+        })
+    intent = _intent_value(agent_response)
+    complexity = getattr(getattr(agent_response, "complexity", None), "level", None)
+    return {
+        "tools": tools,
+        "suggestions": suggest(intent, [{"tool": t["name"], "operation": t["operation"]} for t in tools if t["ok"]]),
+        "complexity": complexity,
     }
 
 
@@ -468,6 +547,7 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str, identity: Option
         intent=intent_value,
         grounding=grounding,
         turn=session.state.turn_count,
+        **_response_extras(agent_response),
     )
 
 

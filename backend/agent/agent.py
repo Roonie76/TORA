@@ -21,6 +21,7 @@ from ..state.conversation_state import ConversationState
 from ..context.extractor import extract_memory_commands
 from ..context.llm_extractor import propose_facts, should_try as should_try_llm_extraction
 from ..observability import TraceTimer, current_trace
+from ..observability import progress
 from ..verify import build_evidence, caveat_note, correction_instruction, verify_answer
 from ..context import (
     ConversationContext,
@@ -54,6 +55,22 @@ def _grounding_mode() -> str:
     return mode if mode in GROUNDING_MODES else "regenerate"
 
 
+
+
+def _tool_summary(tool_result: Any) -> Optional[str]:
+    """One short line for the UI chip (e.g. the engine's own summary)."""
+    if not tool_result.success:
+        return (tool_result.error or "failed")[:160]
+    data = tool_result.data
+    if isinstance(data, dict):
+        if data.get("summary"):
+            return str(data["summary"])[:220]
+        if data.get("rules"):
+            first = data["rules"][0]
+            return f"{first.get('title')} — {first.get('citation')}"[:220]
+        if "result" in data:
+            return f"{data.get('expression', '')} = {data['result']}"[:220]
+    return None
 
 def _max_answer_tokens() -> int:
     """Optional cap on answer length (TORA_MAX_ANSWER_TOKENS); useful on CPU where
@@ -269,6 +286,8 @@ class ToraAgent:
         if conversation_state is not None:
             conversation_state.observe(message, intent)
         trace = current_trace()
+        progress.emit("stage", stage="remembering" if intent.intent in (
+            Intent.MEMORY_UPDATE, Intent.MEMORY_DELETE) else "understanding", intent=intent.intent.value)
         if trace is not None:
             trace.intent = intent.intent.value
             trace.is_followup = intent.is_followup
@@ -329,6 +348,7 @@ class ToraAgent:
         if complexity.is_complex and not model and os.getenv("TORA_COMPLEX_MODEL", "").strip():
             effort_model = os.getenv("TORA_COMPLEX_MODEL").strip()
 
+        progress.emit("complexity", level=complexity.level)
         if fast is not None and self._tool_executor is not None:
             executed_plan = fast
             if trace is not None:
@@ -346,6 +366,7 @@ class ToraAgent:
             and not skip_planner
         ):
             logger.info("Initiating tool planning for user message.")
+            progress.emit("stage", stage="planning")
             planner_message = intent.resolved_query or message
             known_facts = ""
             if isinstance(active_profile, FinancialProfile) and not active_profile.is_empty():
@@ -394,6 +415,10 @@ class ToraAgent:
 
             for step_idx, step in enumerate(steps_to_execute):
                 logger.info("Executing tool step %d/%d: %s", step_idx + 1, len(steps_to_execute), step.tool_name)
+                progress.emit("stage", stage=progress.tool_stage(step.tool_name))
+                progress.emit("tool", status="running", name=step.tool_name,
+                              label=progress.TOOL_LABELS.get(step.tool_name, step.tool_name),
+                              operation=(step.arguments or {}).get("operation"))
                 tool_result = await self._tool_executor.execute(
                     tool_name=step.tool_name,
                     arguments=step.arguments,
@@ -403,6 +428,10 @@ class ToraAgent:
                     tool_result=tool_result,
                     existing_context=effective_tool_context,
                 )
+                progress.emit("tool", status="done" if tool_result.success else "failed", name=step.tool_name,
+                              label=progress.TOOL_LABELS.get(step.tool_name, step.tool_name),
+                              operation=(step.arguments or {}).get("operation"),
+                              summary=_tool_summary(tool_result))
                 if trace is not None:
                     trace.tools.append({
                         "name": tool_result.tool_name,
@@ -453,13 +482,28 @@ class ToraAgent:
         )
 
         # 4. LLM Generation with 1-Shot Context Overflow Recovery
+        streamed_parts: List[str] = []
         final_messages = messages
         try:
+            progress.emit("stage", stage="writing")
+            answer_options = dict(options)
+            streamed = False
+            if progress.active():
+                async def _forward(text: str) -> None:
+                    nonlocal streamed
+                    streamed = True
+                    streamed_parts.append(text)
+                    await progress.emit_token(text)
+
+                answer_options["on_token"] = _forward
             llm_response: LLMResponse = await self.llm_provider.generate(
                 messages=messages,
                 model=model,
-                options=options if options else None,
+                options=answer_options if answer_options else None,
             )
+            if progress.active() and not streamed and llm_response.content:
+                streamed_parts.append(llm_response.content)
+                await progress.emit_token(llm_response.content)  # providers without streaming
         except LLMResponseError as e:
             detail_text = str(e.detail or "").lower()
             message_text = str(e).lower()
@@ -535,6 +579,7 @@ class ToraAgent:
         grounding: Optional[Dict[str, Any]] = None
         mode = _grounding_mode()
         if mode != "off" and content:
+            progress.emit("stage", stage="checking")
             content, grounding = await self._ground(
                 content=content,
                 message=message,
@@ -548,6 +593,10 @@ class ToraAgent:
                 options=options,
                 mode=mode,
             )
+
+        if progress.active() and content != "".join(streamed_parts):
+            # The checked / recovered answer differs from what was streamed: show the final text.
+            progress.emit("replace", text=content, reason=(grounding or {}).get("action") or "final")
 
         if trace is not None and grounding is not None:
             trace.grounding = {
