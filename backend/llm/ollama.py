@@ -213,6 +213,8 @@ class OllamaProvider(LLMProvider):
                 opts["temperature"] = options["temperature"]
             if "num_ctx" in options and options["num_ctx"] is not None:
                 opts["num_ctx"] = options["num_ctx"]
+            if options.get("num_predict"):
+                opts["num_predict"] = int(options["num_predict"])
 
         payload = {
             "model": target_model,
@@ -262,6 +264,10 @@ class OllamaProvider(LLMProvider):
                     status_code=None,
                     detail="done_reason=length",
                 )
+
+            if content and done_reason == "length" and opts.get("num_predict") and not payload.get("format"):
+                # Answer hit TORA_MAX_ANSWER_TOKENS: make the cut visible instead of ending mid-thought.
+                content = content.rstrip() + " …\n\n(Answer shortened — ask me to continue for more detail.)"
 
             record_llm_usage((time.monotonic() - started) * 1000, data, target_model)
             return LLMResponse(

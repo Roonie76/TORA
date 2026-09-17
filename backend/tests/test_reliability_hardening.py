@@ -193,3 +193,31 @@ def test_empty_model_list_is_not_cached():
 def test_huge_integer_results_rejected_with_clear_error(expr):
     with pytest.raises(ValueError, match="maximum allowed magnitude"):
         safe_eval(expr)
+
+
+def test_answer_token_cap_is_optional_and_forwarded(monkeypatch):
+    import asyncio
+    import httpx
+    from backend.agent.agent import _max_answer_tokens
+    from backend.llm.ollama import OllamaProvider
+
+    monkeypatch.delenv("TORA_MAX_ANSWER_TOKENS", raising=False)
+    assert _max_answer_tokens() == 0
+    monkeypatch.setenv("TORA_MAX_ANSWER_TOKENS", "10")
+    assert _max_answer_tokens() == 0  # nonsense-small values ignored
+    monkeypatch.setenv("TORA_MAX_ANSWER_TOKENS", "600")
+    assert _max_answer_tokens() == 600
+
+    seen = {}
+
+    def handler(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "m"}]})
+        seen.update(__import__("json").loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "Part one"}, "done": True, "done_reason": "length"})
+
+    provider = OllamaProvider(host="http://ollama.test", default_model="m")
+    provider._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    resp = asyncio.run(provider.generate([{"role": "user", "content": "hi"}], options={"num_predict": 600}))
+    assert seen["options"]["num_predict"] == 600
+    assert resp.content.startswith("Part one …") and "shortened" in resp.content

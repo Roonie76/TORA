@@ -51,7 +51,19 @@ def _grounding_mode() -> str:
     return mode if mode in GROUNDING_MODES else "regenerate"
 
 
+
+def _max_answer_tokens() -> int:
+    """Optional cap on answer length (TORA_MAX_ANSWER_TOKENS); useful on CPU where
+    generation runs at a few tokens per second. 0 / unset = no cap."""
+    try:
+        value = int(os.getenv("TORA_MAX_ANSWER_TOKENS", "0").strip() or 0)
+    except ValueError:
+        return 0
+    return value if value >= 64 else 0
+
+
 @dataclass
+
 class AgentResponse:
     content: str
     model: str
@@ -314,6 +326,9 @@ class ToraAgent:
         )
 
         options: Dict[str, Any] = {}
+        max_answer_tokens = _max_answer_tokens()
+        if max_answer_tokens:
+            options["num_predict"] = max_answer_tokens
         if temperature is not None:
             options["temperature"] = temperature
 
