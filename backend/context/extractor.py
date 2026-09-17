@@ -146,12 +146,44 @@ _CLOSED_CUES = re.compile(
 )
 
 # keyword -> fact names affected by delete / closure commands
+_LOAN_TYPES = (
+    ("home_loan", r"home|housing|house|mortgage"),
+    ("car_loan", r"car|auto|vehicle|bike|two[- ]wheeler"),
+    ("education_loan", r"education|student|study"),
+    ("gold_loan", r"gold"),
+    ("personal_loan", r"personal"),
+)
+_LOAN_TYPE_RES = [(name, re.compile(r"\b(?:" + pat + r")\s*loans?\b", re.IGNORECASE)) for name, pat in _LOAN_TYPES]
+_TYPED_LOAN = re.compile(r"\b(?:" + "|".join(pat for _, pat in _LOAN_TYPES) + r")\s*loans?\b", re.IGNORECASE)
+
+
+def _loan_types_in(text: str) -> List[str]:
+    return [name for name, rx in _LOAN_TYPE_RES if rx.search(text)]
+
+
+def _loan_type_near(clause: str, start: int, end: int) -> str:
+    """Loan type for an amount: look inside the match, then back to the previous separator."""
+    inside = _loan_types_in(clause[start:end])
+    if inside:
+        return inside[0]
+    head = clause[:start]
+    cut = max(head.rfind(","), head.rfind(";"), head.rfind(" and "), head.rfind(" but "))
+    window = head[cut + 1:] if cut >= 0 else head
+    found = [(m.start(), name) for name, rx in _LOAN_TYPE_RES for m in rx.finditer(window)]
+    if found:
+        return max(found)[1]
+    everywhere = _loan_types_in(clause)
+    if len(everywhere) == 1:  # "My home loan is 40 lakh and the EMI is 35k"
+        return everywhere[0]
+    return "personal_loan"
+
+
 ENTITY_FACT_NAMES = (
     (("salary", "income", "earning", "earnings"), ("income",)),
     (("rent",), ("rent",)),
     (("savings", "saving", "emergency fund"), ("savings",)),
     (("credit card", "card", "cc"), ("credit_card_debt", "credit_card_apr")),
-    (("emi", "loan"), ("personal_loan_emi",)),
+    (("emi", "loan", "loans"), ("personal_loan_emi", "personal_loan_balance")),
     (("mutual fund", "mutual funds", "mf"), ("mutual_funds",)),
     (("gold",), ("gold",)),
     (("car",), ("car_goal",)),
@@ -163,7 +195,12 @@ ENTITY_FACT_NAMES = (
 def _fact_names_in(text: str) -> List[str]:
     lower = text.lower()
     names: List[str] = []
+    typed = _loan_types_in(lower)
+    for loan in typed:
+        names += [f"{loan}_emi", f"{loan}_balance"]
     for keywords, fact_names in ENTITY_FACT_NAMES:
+        if typed and "loan" in keywords:
+            continue  # "forget my home loan" must not also forget the personal loan
         if any(re.search(r"\b" + re.escape(k) + r"\b", lower) for k in keywords):
             for n in fact_names:
                 if n not in names:
@@ -193,13 +230,13 @@ def extract_memory_commands(message: str) -> List[Dict[str, Any]]:
             return [{"action": "delete", "name": n} for n in names]
     if _CLOSED_CUES.search(text) and _FIRST_PERSON.search(text):
         names = _fact_names_in(text)
-        closable = [n for n in names if n in ("credit_card_debt", "personal_loan_emi", "rent")]
+        closable = [n for n in names if n in ("credit_card_debt", "rent") or n.endswith(("_loan_emi", "_loan_balance"))]
         return [
             {
                 "name": n,
                 "value": 0.0,
-                "category": "rent" if n == "rent" else ("loan" if n == "personal_loan_emi" else "debt"),
-                "period": "monthly" if n in ("rent", "personal_loan_emi") else "lump_sum",
+                "category": "rent" if n == "rent" else ("loan" if "_loan_" in n else "debt"),
+                "period": "monthly" if (n == "rent" or n.endswith("_emi")) else "lump_sum",
                 "status": FactStatus.CURRENT.value,
                 "notes": text[:200],
                 "closure": True,
@@ -455,9 +492,11 @@ class FactExtractor:
                     if "commute" not in detected_entities:
                         detected_entities.append("commute")
 
-            # 6. Personal Loan / EMI
+            # 6. Loans / EMIs (home, car, education, gold, personal)
+            amount_re = r"(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)"
+            loan_kw = r"(?:(?:home|housing|house|mortgage|car|auto|vehicle|bike|two[- ]wheeler|education|student|study|gold|personal)\s*loans?|loan\s*emis?|monthly\s*emis?|emis?)"
             emi_matches = list(re.finditer(
-                r"(?:\b(?:personal\s*loan|loan\s*emi|monthly\s*emi|emi)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:monthly\s*emi|personal\s*loan|emi))",
+                r"(?:\b" + loan_kw + r"\b[^\d\n]{0,35}?" + amount_re + r"|" + amount_re + r"\s*(?:monthly\s*emi|emi|(?:" + loan_kw + r")))",
                 c_lower,
             ))
             seen_loan_names = set()
@@ -465,11 +504,12 @@ class FactExtractor:
                 val_str = emi_match.group(1) or emi_match.group(2)
                 amt = parse_inr_amount(val_str)
                 is_emi = bool(re.search(r"\bemis?\b|per\s*month|a\s*month|monthly", emi_match.group(0)))
+                loan = _loan_type_near(c_lower, emi_match.start(), emi_match.end())
                 if is_emi and amt and 1000 <= amt <= 1000000:
-                    name, period = "personal_loan_emi", "monthly"
-                elif not is_emi and amt and amt >= 10000:
+                    name, period = f"{loan}_emi", "monthly"
+                elif not is_emi and amt and amt >= 10000 and _TYPED_LOAN.search(emi_match.group(0)):
                     # "a personal loan of 3 lakh" is an outstanding balance, not a monthly EMI
-                    name, period = "personal_loan_balance", "lump_sum"
+                    name, period = f"{loan}_balance", "lump_sum"
                 else:
                     continue
                 if name in seen_loan_names:
@@ -614,7 +654,7 @@ class FactExtractor:
 
             # 12. Car Goal / Major Goal
             goal_match = re.search(
-                r"\b(?:car|vehicle|buy\s*a\s*car|car\s*goal)\b[^\d\n]{0,45}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
+                r"\b(?:car|vehicle|buy\s*a\s*car|car\s*goal)\b(?!\s*loan)[^\d\n]{0,45}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                 c_lower,
             )
             if goal_match:

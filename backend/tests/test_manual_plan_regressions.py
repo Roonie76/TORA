@@ -64,4 +64,22 @@ def test_intents(message, intent):
 
 def test_loan_balance_and_emi_in_one_message():
     assert facts("I have a personal loan of 3 lakh and my home loan EMI is 25k") == {
-        "personal_loan_balance": 300000.0, "personal_loan_emi": 25000.0}
+        "personal_loan_balance": 300000.0, "home_loan_emi": 25000.0}
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("My home loan is 40 lakh and the EMI is 35k", {"home_loan_balance": 4000000.0, "home_loan_emi": 35000.0}),
+    ("My car loan EMI is 12k", {"car_loan_emi": 12000.0}),
+    ("I pay 15k EMI", {"personal_loan_emi": 15000.0}),
+    ("I took a 5 lakh education loan", {"education_loan_balance": 500000.0}),
+    ("personal loan emi 8000, car loan 4 lakh", {"personal_loan_emi": 8000.0, "car_loan_balance": 400000.0}),
+])
+def test_loan_types(message, expected):
+    assert facts(message) == expected
+
+
+def test_forget_and_close_typed_loans():
+    from backend.context.extractor import extract_memory_commands
+    assert {c["name"] for c in extract_memory_commands("forget my home loan")} == {"home_loan_emi", "home_loan_balance"}
+    closed = extract_memory_commands("I paid off my car loan")
+    assert {c["name"] for c in closed} == {"car_loan_emi", "car_loan_balance"} and all(c["closure"] for c in closed)

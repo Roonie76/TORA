@@ -162,7 +162,7 @@ window.trace = () => fetch('http://127.0.0.1:8000/api/traces?limit=1').then(r =>
 - 3 → mem() has Monthly Income ₹65,000 and a “Corrected Mistakes” line for ₹60,000
 - 4 → must NOT present ₹60,000 as your earlier salary
 - 5 → mem(): Monthly Income ₹2 Lakh (stated as ₹24,00,000 per year)
-- 6 → mem(): Personal_loan_balance ₹3 Lakh and Personal_loan_emi ₹25,000
+- 6 → mem(): Personal_loan_balance ₹3 Lakh and Home_loan_emi ₹25,000
 - 7 → mem(): Sip_monthly ₹10,000
 - 8 → mem() prints (nothing remembered)
 
@@ -699,7 +699,7 @@ Start each test with tora-new unless it says otherwise. After each step, tora-me
 
 **Expect**
 
-- Personal_loan_balance ₹3 Lakh and Personal_loan_emi ₹25,000 (the 3 lakh is NOT an EMI)
+- Personal_loan_balance ₹3 Lakh and Home_loan_emi ₹25,000 (the 3 lakh is NOT an EMI, and the EMI belongs to the home loan)
 - Sip_monthly ₹10,000; turn 2 intent [memory_update]
 
 - [ ] Pass  - [ ] Fail  - [ ] Skip — notes:

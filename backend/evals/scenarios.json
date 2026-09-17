@@ -1356,7 +1356,8 @@
           "user": "My car loan EMI is 12k",
           "expect": {
             "profile": {
-              "personal_loan_emi": 12000.0
+              "car_loan_emi": 12000.0,
+              "personal_loan_emi": null
             },
             "intent": "memory_update",
             "planner_called": false
