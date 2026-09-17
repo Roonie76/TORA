@@ -221,3 +221,35 @@ def test_answer_token_cap_is_optional_and_forwarded(monkeypatch):
     resp = asyncio.run(provider.generate([{"role": "user", "content": "hi"}], options={"num_predict": 600}))
     assert seen["options"]["num_predict"] == 600
     assert resp.content.startswith("Part one …") and "shortened" in resp.content
+
+
+def test_thinking_disabled_by_default_with_fallback(monkeypatch):
+    import asyncio
+    import json as _json
+    import httpx
+    from backend.llm.ollama import OllamaProvider
+
+    monkeypatch.delenv("TORA_LLM_THINK", raising=False)
+    bodies = []
+
+    def handler(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "m"}]})
+        body = _json.loads(request.content)
+        bodies.append(body)
+        if "think" in body:
+            return httpx.Response(400, json={"error": "\"m\" does not support thinking"})
+        return httpx.Response(200, json={"message": {"content": "ok"}, "done": True})
+
+    provider = OllamaProvider(host="http://ollama.test", default_model="m")
+    provider._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    assert asyncio.run(provider.generate([{"role": "user", "content": "hi"}])).content == "ok"
+    assert bodies[0]["think"] is False and "think" not in bodies[1]
+    asyncio.run(provider.generate([{"role": "user", "content": "hi"}]))
+    assert "think" not in bodies[2]  # remembered
+
+    monkeypatch.setenv("TORA_LLM_THINK", "auto")
+    p2 = OllamaProvider(host="http://ollama.test", default_model="m")
+    p2._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    asyncio.run(p2.generate([{"role": "user", "content": "hi"}]))
+    assert "think" not in bodies[-1]

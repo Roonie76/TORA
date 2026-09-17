@@ -57,6 +57,18 @@ def _resolve_num_ctx(explicit: Optional[int] = None) -> int:
     return DEFAULT_NUM_CTX
 
 
+def _think_setting() -> Optional[bool]:
+    """
+    TORA_LLM_THINK: "false" (default) asks reasoning models (e.g. gemma4, qwen3) not to emit a
+    hidden thinking pass — on CPU that pass costs minutes per turn and TORA's tools already do the
+    maths. "true" enables it; "auto" leaves the model's default.
+    """
+    raw = os.getenv("TORA_LLM_THINK", "false").strip().lower()
+    if raw in ("auto", "default", ""):
+        return None
+    return raw in ("1", "true", "yes", "on")
+
+
 def normalize_ollama_host(raw_host: Optional[str]) -> str:
     """Normalize OLLAMA_HOST string to a valid HTTP URL."""
     if not raw_host or raw_host.strip() in ("0.0.0.0", "0.0.0.0:11434", "127.0.0.1", "localhost"):
@@ -93,6 +105,7 @@ class OllamaProvider(LLMProvider):
         self.timeout = timeout
         self._client = client
         self._num_ctx = _resolve_num_ctx(num_ctx)
+        self._no_think_models: set = set()
         self._models_cache: Optional[List[str]] = None
         self._models_cache_at: float = 0.0
         try:
@@ -191,6 +204,12 @@ class OllamaProvider(LLMProvider):
             "default_model": self.default_model,
         }
 
+    async def _post_chat(self, payload: Dict[str, Any]) -> httpx.Response:
+        if self._client:
+            return await self._client.post(f"{self.host}/api/chat", json=payload)
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            return await client.post(f"{self.host}/api/chat", json=payload)
+
     async def generate(
         self,
         messages: List[Dict[str, str]],
@@ -226,19 +245,18 @@ class OllamaProvider(LLMProvider):
             # Constrained decoding: a JSON schema (or "json") understood by Ollama >= 0.5
             payload["format"] = options["format"]
 
+        think = _think_setting()
+        if think is not None and target_model not in self._no_think_models:
+            payload["think"] = think
+
         started = time.monotonic()
         try:
-            if self._client:
-                response = await self._client.post(
-                    f"{self.host}/api/chat",
-                    json=payload,
-                )
-            else:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.post(
-                        f"{self.host}/api/chat",
-                        json=payload,
-                    )
+            response = await self._post_chat(payload)
+            if response.status_code != 200 and "think" in payload and "think" in response.text.lower():
+                # Model / server without thinking support: remember and retry without the flag.
+                self._no_think_models.add(target_model)
+                payload.pop("think", None)
+                response = await self._post_chat(payload)
 
             if response.status_code != 200:
                 error_body = response.text
