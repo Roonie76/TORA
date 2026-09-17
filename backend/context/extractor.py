@@ -72,7 +72,8 @@ _IMPERSONAL_CALC = re.compile(
 )
 _EXPLICIT_OWN_AMOUNT = re.compile(
     r"\b(?:my|i)\s+(?:\w+\s+){0,2}?(?:salary|income|ctc|package|take[- ]?home|rent|emi|balance|savings)\s+(?:is|was|of|=)|"
-    r"\bi\s+(?:earn|make|get|take\s+home|pay|have|invest|spend)\b",
+    r"\bi\s+(?:earn|make|get|take\s+home|pay|have|invest|spend)\b|"
+    r"\b(?:for\s+me|i\s+am|i'm)\b.*\bwith\s+(?:a\s+|an\s+)?(?:annual\s+|monthly\s+)?(?:salary|income|ctc|package)\s+of\b",
     re.IGNORECASE,
 )
 _FIRST_PERSON = re.compile(r"\b(?:i|i'm|im|i've|my|me|mine)\b", re.IGNORECASE)
