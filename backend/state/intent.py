@@ -125,7 +125,7 @@ _CLARIFY = re.compile(r"^\s*(?:why\??|how\??|what\??|huh\??|explain(?: more| tha
                       r"can you explain(?: that| more)?\??|what do you mean\??|meaning\??|really\??)\s*$", re.IGNORECASE)
 _FINANCE_WORDS = re.compile(r"\b(?:loan|emi|interest|tax|salary|income|invest|saving|savings|budget|debt|credit|"
                             r"deposit|fund|insurance|pension|rent|expense|money|rupee|inr|₹|bank|cibil|credit score|"
-                            r"inflation|return|portfolio|asset|liabilit)", re.IGNORECASE)
+                            r"inflation|return|portfolio|asset|liabilit|spen[dt]|spending|transactions?|expenses?)", re.IGNORECASE)
 
 
 def find_entities(text: str) -> List[str]:
