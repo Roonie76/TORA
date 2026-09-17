@@ -1,3 +1,4 @@
+import pytest
 import unittest
 from backend.context.extractor import FactExtractor, FactManager, parse_inr_amount
 from backend.context.financial import FinancialProfile, FactStatus
@@ -84,3 +85,25 @@ class TestFactExtractor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("My salary is -50000 per month", {}),
+    ("I have -1.2 lakh in savings", {}),
+    ("my rent is 20k and my salary is -5000", {"rent": 20000.0}),
+    ("my salary is 88k and my rent is 22k", {"income": 88000.0, "rent": 22000.0}),
+])
+def test_negative_amounts_are_never_remembered(message, expected):
+    """A minus sign means a typo or a misunderstanding, not a fact."""
+    from backend.context.extractor import FactExtractor
+
+    got = {c["name"]: c["value"] for c in FactExtractor.extract_candidate_facts(message)}
+    assert got == expected
+
+
+def test_negative_amount_note_tells_the_model_not_to_confirm():
+    from backend.agent.agent import _negative_amount_note
+
+    note = _negative_amount_note("My salary is -50000 per month")
+    assert "nothing was recorded" in note and "Ask the user what they meant" in note
+    assert _negative_amount_note("My salary is 50000 per month") == ""

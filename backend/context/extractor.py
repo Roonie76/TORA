@@ -163,6 +163,24 @@ _LOAN_TYPE_RES = [(name, re.compile(r"\b(?:" + pat + r")\s*loans?\b", re.IGNOREC
 _TYPED_LOAN = re.compile(r"\b(?:" + "|".join(pat for _, pat in _LOAN_TYPES) + r")\s*loans?\b", re.IGNORECASE)
 
 
+# A minus sign in front of an amount ("my salary is -50000") is a typo or a mistake,
+# never a fact worth remembering. Only that value is dropped; the rest of the message stands.
+_NEGATIVE_AMOUNT = re.compile(
+    r"(?<![\w\d])-\s*(?:₹|rs\.?|inr)?\s*(\d[\d,]*(?:\.\d+)?\s*(?:lakhs?|lacs?|lac|crores?|cr|thousand|grand|k|l)?)",
+    re.IGNORECASE,
+)
+
+
+def negated_amounts(text: str) -> List[float]:
+    """Values written as negative in the message, so they are never stored as facts."""
+    out: List[float] = []
+    for raw in _NEGATIVE_AMOUNT.findall(text or ""):
+        value = parse_inr_amount(raw)
+        if value:
+            out.append(value)
+    return out
+
+
 def _loan_types_in(text: str) -> List[str]:
     return [name for name, rx in _LOAN_TYPE_RES if rx.search(text)]
 
@@ -778,6 +796,10 @@ class FactExtractor:
             for cand in candidates:
                 if cand.get("status") == FactStatus.CURRENT.value:
                     cand["correction"] = True
+        negatives = negated_amounts(clean_text)
+        if negatives:
+            candidates = [c for c in candidates
+                          if not any(abs(float(c.get("value") or 0) - n) < 0.01 for n in negatives)]
         return candidates
 
 

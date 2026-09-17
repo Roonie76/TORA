@@ -103,6 +103,17 @@ _FORGET_REQUEST = re.compile(
 )
 
 
+def _negative_amount_note(message: str) -> str:
+    """A negative figure is a typo or a misunderstanding; nothing was stored, so don't confirm it."""
+    from ..context.extractor import negated_amounts
+
+    if not negated_amounts(message or ""):
+        return ""
+    return ("\n\n## Figures\n- The message contains a negative amount, so nothing was recorded from it. Ask the "
+            "user what they meant (for example an expense, a loss, or a typo) instead of confirming the figure or "
+            "treating it as a positive number.")
+
+
 def _forget_note(message: str, memory_commands: List[Dict[str, Any]]) -> str:
     if not _FORGET_REQUEST.search(message or ""):
         return ""
@@ -486,7 +497,8 @@ class ToraAgent:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
 
         # 3. Build Initial Context
-        account_note = _account_note() + _case_note(complexity) + _forget_note(message, memory_commands)
+        account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands)
+                        + _negative_amount_note(message))
         if account_note:
             system_prompt = (system_prompt or self.default_system_prompt) + account_note
         messages = self._build_messages(
