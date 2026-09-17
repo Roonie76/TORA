@@ -41,6 +41,7 @@ from .agent import ToraAgent
 from .state import SessionStore, is_valid_conversation_id
 from .documents import DocumentError, MAX_BYTES as MAX_DOCUMENT_BYTES, parse_document
 from .observability import TelemetryHub, conversation_ref, start_trace
+from .observability import training_log
 
 load_dotenv()
 
@@ -200,6 +201,7 @@ class ChatResponse(BaseModel):
     conversation_id: Optional[str] = None
     intent: Optional[str] = None
     grounding: Optional[Dict[str, Any]] = None
+    turn: Optional[int] = None
 
 
 @app.get("/")
@@ -453,6 +455,10 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str, identity: Option
             meta["tools"] = [step.tool_name for step in plan.steps]
         session.append_exchange(prompt, agent_response.content, turn=session.state.turn_count, meta=meta)
         session_store.save(session)
+    try:
+        training_log.record_turn(session.id, session.state.turn_count, prompt, agent_response, history)
+    except Exception:  # logging must never break a turn
+        pass
 
     return ChatResponse(
         response=agent_response.content,
@@ -461,6 +467,7 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str, identity: Option
         conversation_id=session.id,
         intent=intent_value,
         grounding=grounding,
+        turn=session.state.turn_count,
     )
 
 
@@ -624,6 +631,33 @@ async def dismiss_document(doc_id: str, body: ConfirmFactsRequest, http_request:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
         session_store.save(session)
     return {"dismissed": True}
+
+
+class FeedbackRequest(BaseModel):
+    conversation_id: str = Field(..., max_length=64)
+    turn: int = Field(..., ge=1)
+    rating: str = Field(..., pattern=r"^(up|down)$")
+    comment: Optional[str] = Field(default=None, max_length=1000)
+    better_answer: Optional[str] = Field(default=None, max_length=4000)
+
+
+@app.post("/api/feedback")
+async def feedback(body: FeedbackRequest, http_request: Request):
+    """Thumbs up/down on an answer (optionally with a corrected answer) — used for later training."""
+    identity = await resolve_identity(http_request)
+    session = _load_session_or_404(body.conversation_id, identity)
+    lock_key = f"user:{session.owner_id}" if session.owner_id else session.id
+    async with session_store.lock_for(lock_key):
+        session = _load_session_or_404(body.conversation_id, identity)
+        target = next((t for t in session.turns if t.get("role") == "assistant" and t.get("turn") == body.turn), None)
+        if target is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Turn not found.")
+        meta = dict(target.get("meta") or {})
+        meta["feedback"] = {"rating": body.rating, "comment": body.comment}
+        target["meta"] = meta
+        session_store.save(session)
+    training_log.record_feedback(body.conversation_id, body.turn, body.rating, body.comment, body.better_answer)
+    return {"recorded": True, "training_log": training_log.log_path() is not None}
 
 
 @app.get("/api/conversations/{conversation_id}")

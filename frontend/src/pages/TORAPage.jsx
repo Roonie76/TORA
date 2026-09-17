@@ -6,6 +6,8 @@ import {
   Check,
   RotateCcw,
   Paperclip,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import { cn } from "@shared/utils/cn";
 import { getStoredAccessToken } from "../api";
@@ -311,6 +313,21 @@ export default function TORAPage({
     }
   };
 
+  // Phase 13: answer ratings (kept for future training only if the server enables it)
+  const rateAnswer = async (msg, rating) => {
+    if (!msg.turn || !msg.conversationId || msg.rating) return;
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, rating } : m)));
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: toraHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ conversation_id: msg.conversationId, turn: msg.turn, rating }),
+      });
+    } catch {
+      // rating is best-effort
+    }
+  };
+
   const handleSend = async (customText) => {
     const text = customText || input;
     const trimmed = text.trim();
@@ -370,6 +387,8 @@ export default function TORAPage({
         content: data.response || "No response received.",
         timestamp: getTimestamp(),
         model: data.model,
+        turn: data.turn,
+        conversationId: data.conversation_id,
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
@@ -537,6 +556,26 @@ export default function TORAPage({
                   >
                     <span>{msg.timestamp}</span>
 
+                    {!isUser && !msg.isError && msg.turn && (
+                      <span className="flex items-center gap-1">
+                        <button
+                          onClick={() => rateAnswer(msg, "up")}
+                          className={cn("p-1 rounded hover:opacity-100", msg.rating === "up" && "text-emerald-400")}
+                          title="Helpful"
+                          aria-label="Helpful"
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => rateAnswer(msg, "down")}
+                          className={cn("p-1 rounded hover:opacity-100", msg.rating === "down" && "text-rose-400")}
+                          title="Not helpful"
+                          aria-label="Not helpful"
+                        >
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
+                    )}
                     {!isUser && !msg.isError && (
                       <button
                         onClick={() => handleCopy(msg.id, msg.content)}
