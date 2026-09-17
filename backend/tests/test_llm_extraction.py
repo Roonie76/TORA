@@ -14,6 +14,11 @@ def f(name, value, evidence, status="current"):
     return {"name": name, "value": value, "evidence": evidence, "status": status}
 
 
+def test_rules_now_cover_common_hinglish():
+    got = {c["name"]: c["value"] for c in FactExtractor.extract_candidate_facts("meri salary 80 hazaar hai")}
+    assert got == {"income": 80000.0}
+
+
 class TestShouldTry:
     @pytest.mark.parametrize("msg", [
         "meri salary 80 hazaar hai",
@@ -112,10 +117,10 @@ class ExtractLLM(LLMProvider):
 
 
 def test_agent_applies_verified_model_facts():
-    llm = ExtractLLM([f("income", 80000, "80 hazaar"), f("rent", 99999, "99999")])
+    llm = ExtractLLM([f("income", 90000, "90 grand"), f("rent", 99999, "99999")])
     profile = FinancialProfile()
-    resp = asyncio.run(ToraAgent(llm_provider=llm).run("meri salary 80 hazaar hai", financial_context=profile))
-    assert profile.income.value == 80000 and profile.income.source == "model_assisted"
+    resp = asyncio.run(ToraAgent(llm_provider=llm).run("I pull in about 90 grand a month", financial_context=profile))
+    assert profile.income.value == 90000 and profile.income.source == "model_assisted"
     assert profile.rent is None                          # evidence not in the message
     assert resp.intent.intent.value == "memory_update"
 

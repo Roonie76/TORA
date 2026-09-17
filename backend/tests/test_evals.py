@@ -68,7 +68,10 @@ def test_cli_writes_reports_and_gates(tmp_path):
     out, md = tmp_path / "r.json", tmp_path / "r.md"
     assert evals_main(["--mode", "offline", "--category", "tax", "--out", str(out), "--md", str(md),
                        "--min-pass-rate", "1.0"]) == 0
-    assert json.loads(out.read_text())["by_category"] == {"tax": {"scenarios": 2, "passed": 2}}
+    by_cat = json.loads(out.read_text())["by_category"]
+    assert list(by_cat) == ["tax"]
+    assert by_cat["tax"]["scenarios"] >= 10
+    assert by_cat["tax"]["passed"] == by_cat["tax"]["scenarios"]
     assert "TORA evaluation" in md.read_text()
 
 

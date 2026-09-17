@@ -2,6 +2,7 @@ import re
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 from .financial import FinancialProfile, FinancialFact, FactStatus
+from .normalize import normalize_message
 
 logger = logging.getLogger("tora.context.extractor")
 
@@ -40,8 +41,8 @@ def parse_inr_amount(text: str) -> Optional[float]:
         except ValueError:
             pass
 
-    # Match k (thousands)
-    k_match = re.search(r"\b([\d,.]+)\s*k\b", clean)
+    # Match k / thousand / grand
+    k_match = re.search(r"\b([\d,.]+)\s*(?:k|thousand|grand|hazaar|hazar)\b", clean)
     if k_match:
         try:
             num = float(k_match.group(1).replace(",", ""))
@@ -63,6 +64,10 @@ def parse_inr_amount(text: str) -> Optional[float]:
 
 _QUESTION_START = re.compile(
     r"^\s*(?:what|how|is|are|was|were|should|shall|can|could|would|will|does|do|did|which|why|when|where|who)\b",
+    re.IGNORECASE,
+)
+_IMPERSONAL_CALC = re.compile(
+    r"\b(?:tax|taxes|regime|surcharge|rebate|emi\s+(?:for|on|of)|sip\s+of|corpus|calculate|compute)\b",
     re.IGNORECASE,
 )
 _FIRST_PERSON = re.compile(r"\b(?:i|i'm|im|i've|my|me|mine)\b", re.IGNORECASE)
@@ -174,9 +179,11 @@ def extract_memory_commands(message: str) -> List[Dict[str, Any]]:
     - "I paid off my credit card" / "I no longer pay rent" -> current value 0 (closure)
     Questions ("How do I delete my card?") are never commands.
     """
-    if not message or not message.strip() or _is_question(message):
+    if not message or not message.strip():
         return []
-    text = message.strip()
+    text = normalize_message(message.strip())
+    if _is_question(text):
+        return []
     if _DELETE_ALL.search(text):
         return [{"action": "clear"}]
     m = _DELETE_ONE.search(text)
@@ -268,6 +275,8 @@ class FactExtractor:
         if commands:
             return commands
 
+        original_message = message
+        message = normalize_message(message)
         raw_lower = message.lower()
 
         # Check for system injection markers
@@ -285,6 +294,14 @@ class FactExtractor:
             overall_status == FactStatus.CURRENT.value
             and _is_question(clean_text)
             and not _FIRST_PERSON.search(clean_text)
+        ):
+            return candidates
+        # Impersonal calculation requests ("Tax on 60 lakh income", "Super senior
+        # with 7 lakh income under old regime") describe an example, not the user.
+        if (
+            overall_status == FactStatus.CURRENT.value
+            and not _FIRST_PERSON.search(clean_text)
+            and _IMPERSONAL_CALC.search(clean_text)
         ):
             return candidates
 
@@ -325,7 +342,7 @@ class FactExtractor:
 
             # 2. Income / Salary
             inc_match = re.search(
-                r"(?:(?<!other )(?<!rental )(?<!interest )(?<!dividend )(?<!side )\b(?:salary|income|take\s*home|earn|earning|earned|made|make|ctc|package)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:salary|income|take\s*home))",
+                r"(?:(?<!other )(?<!rental )(?<!interest )(?<!dividend )(?<!side )\b(?:salary|income|take\s*home|earn|earning|earned|made|make|ctc|package)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:salary|income|take\s*home))",
                 c_lower,
             )
             if (
@@ -365,7 +382,7 @@ class FactExtractor:
 
             # 3. Rent
             rent_match = re.search(
-                r"(?:\b(?:rent)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:rent))",
+                r"(?:\b(?:rent)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?(?:\s*per\s*month|\s*/\s*month|\s*pm)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:rent))",
                 c_lower,
             )
             if not rent_match and effective_entity == "rent" and _allows_loose_amount(clause_text):
@@ -398,9 +415,14 @@ class FactExtractor:
 
             # 4. Food / Groceries
             food_match = re.search(
-                r"\b(?:food|groceries)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:food|groceries)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                 c_lower,
             )
+            if not food_match:
+                food_match = re.search(
+                    r"(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|thousand|grand|k)\b)?)\s*(?:a\s+month\s+|monthly\s+|per\s+month\s+)?(?:on|for)\s+(?:food|groceries|grocery)\b",
+                    c_lower,
+                )
             if food_match:
                 amt = parse_inr_amount(food_match.group(1))
                 if amt and 500 <= amt <= 100000:
@@ -416,7 +438,7 @@ class FactExtractor:
 
             # 5. Commute / Travel
             commute_match = re.search(
-                r"\b(?:commute|transport|travel|fuel)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:commute|transport|travel|fuel)\b[^\d\n]{0,30}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                 c_lower,
             )
             if commute_match:
@@ -434,7 +456,7 @@ class FactExtractor:
 
             # 6. Personal Loan / EMI
             emi_matches = list(re.finditer(
-                r"(?:\b(?:personal\s*loan|loan\s*emi|monthly\s*emi|emi)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:monthly\s*emi|personal\s*loan|emi))",
+                r"(?:\b(?:personal\s*loan|loan\s*emi|monthly\s*emi|emi)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:monthly\s*emi|personal\s*loan|emi))",
                 c_lower,
             ))
             seen_loan_names = set()
@@ -464,7 +486,7 @@ class FactExtractor:
 
             # 7. Credit Card Debt / Balance
             cc_match = re.search(
-                r"\b(?:credit\s*card|cc\s*debt|cc\s*balance|card\s*balance|outstanding\s*balance|card\s*statement|statement|balance)\b[^\d\n]{0,50}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:credit\s*card|cc\s*debt|cc\s*balance|card\s*balance|outstanding\s*balance|card\s*statement|statement|balance)\b[^\d\n]{0,50}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                 c_lower,
             )
             if not cc_match and effective_entity == "debt" and _allows_loose_amount(clause_text):
@@ -515,7 +537,7 @@ class FactExtractor:
 
             # 9. Savings / Emergency Fund
             savings_match = re.search(
-                r"(?:\b(?:savings|emergency\s*fund|bank\s*balance)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:in\s*savings|in\s*bank\s*savings|savings|emergency\s*fund))",
+                r"(?:\b(?:savings|emergency\s*fund|bank\s*balance)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:in\s*savings|in\s*bank\s*savings|savings|emergency\s*fund|(?:already\s+)?saved(?:\s+up)?\b))",
                 c_lower,
             )
             if savings_match:
@@ -553,7 +575,7 @@ class FactExtractor:
 
             # 10. Mutual Funds
             mf_match = re.search(
-                r"(?:\b(?:mutual\s*funds|mf)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:in\s*mutual\s*funds|in\s*mf|mutual\s*funds))",
+                r"(?:\b(?:mutual\s*funds|mf)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:in\s*mutual\s*funds|in\s*mf|mutual\s*funds))",
                 c_lower,
             )
             if mf_match:
@@ -572,7 +594,7 @@ class FactExtractor:
 
             # 11. Gold
             gold_match = re.search(
-                r"(?:\b(?:gold|gold\s*worth)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)\s*(?:in\s*gold|worth\s*of\s*gold|gold))",
+                r"(?:\b(?:gold|gold\s*worth)\b[^\d\n]{0,35}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)|(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)\s*(?:in\s*gold|worth\s*of\s*gold|gold))",
                 c_lower,
             )
             if gold_match:
@@ -591,7 +613,7 @@ class FactExtractor:
 
             # 12. Car Goal / Major Goal
             goal_match = re.search(
-                r"\b(?:car|vehicle|buy\s*a\s*car|car\s*goal)\b[^\d\n]{0,45}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|l|k)\b)?)",
+                r"\b(?:car|vehicle|buy\s*a\s*car|car\s*goal)\b[^\d\n]{0,45}?(₹?\s*\d[\d,]*(?:\.\d+)?\s*(?:\s*(?:lakhs|lakh|lacs|lac|lpa|crores|crore|cr|thousand|grand|l|k)\b)?)",
                 c_lower,
             )
             if goal_match:
@@ -650,6 +672,17 @@ class FactManager:
     ) -> List[FinancialFact]:
         """Apply extracted candidate facts (and memory commands) to profile."""
         applied = []
+        # A past value stated alongside the present one ("I used to earn 60k but
+        # now I earn 72k") must land as the revision of the current fact, so
+        # apply same-turn CURRENT candidates before their HISTORICAL twins.
+        current_names = {
+            c.get("name") for c in candidates
+            if not c.get("action") and c.get("status", FactStatus.CURRENT.value) == FactStatus.CURRENT.value
+        }
+        candidates = sorted(
+            candidates,
+            key=lambda c: 1 if (c.get("status") == FactStatus.HISTORICAL.value and c.get("name") in current_names) else 0,
+        )
         for cand in candidates:
             action = cand.get("action")
             if action == "clear":

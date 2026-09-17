@@ -69,7 +69,8 @@ _MONEYISH = re.compile(r"\d|\b(?:hazaar|hazar|thousand|lakh|lac|crore|grand)\b",
 _FINANCE_HINT = re.compile(
     r"\b(?:salary|income|earn|kamata|kamati|kamai|paisa|paise|rent|kiraya|emi|loan|debt|card|fd|deposit|sip|"
     r"mutual|fund|stock|share|gold|ppf|epf|save|saving|bachat|invest|spend|kharcha|expense|premium|insurance|"
-    r"take[- ]?home|in[- ]?hand|ctc|package|bonus|grand|rupees?|rs|inr|₹)",
+    r"take[- ]?home|in[- ]?hand|ctc|package|bonus|grand|rupees?|rs|inr|₹|pull(?:s|ing)? in|bring(?:s|ing)? in|"
+    r"make|making|jobs?|freelanc|stipend|pension|amount)",
     re.IGNORECASE,
 )
 _HINGLISH_FIRST_PERSON = re.compile(r"\b(?:mera|meri|mere|main|mai|mujhe|hum|humara|hamara)\b", re.IGNORECASE)

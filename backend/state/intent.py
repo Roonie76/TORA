@@ -93,7 +93,8 @@ _ARITHMETIC = re.compile(r"\d\s*[*/+^×÷x-]\s*\d|\b(?:calculate|compute|how muc
                          r"future value|corpus|payoff|pay off .* in)\b", re.IGNORECASE)
 _CALC_TOPIC_WITH_NUMBER = re.compile(
     r"(?=.*\d)(?=.*\b(?:emi|sip|corpus|maturity|compound|amortization|prepay\w*|how much tax|tax on|tax payable|"
-    r"regime is better|which regime|net worth|debt[- ]free|retire\w*|inflation|payoff|pay off)\b)", re.IGNORECASE | re.DOTALL)
+    r"regime is better|which regime|regime|tax|taxes|surcharge|rebate|net worth|debt[- ]free|retire\w*|inflation|"
+    r"payoff|pay off|savings rate|debt[- ]to[- ]income|ratio|dti)\b)", re.IGNORECASE | re.DOTALL)
 _REQUEST_WORDS = re.compile(r"\b(?:help|plan|calculate|compute|compare|tell me|show|explain|suggest|advise|"
                             r"recommend|should|can you|could you|please|how|what|which|why)\b", re.IGNORECASE)
 _WHAT_IF = re.compile(r"\b(?:what if|suppose|assuming|assume|imagine|hypothetically|let'?s say|if i (?:increase|decrease|"
@@ -107,8 +108,16 @@ _MEMORY_RECALL = re.compile(r"\b(?:what (?:is|was|were|are) my|my (?:previous|or
                             r"how much (?:do|did) i (?:earn|make|pay|owe|have)|what'?s my)\b", re.IGNORECASE)
 _MEMORY_FACT_WORDS = re.compile(r"\b(?:salary|income|earn|rent|savings?|emergency fund|balance|debt|loan|emi|card|"
                                 r"investments?|mutual funds?|gold|goal|expenses?|profile|about me)\b", re.IGNORECASE)
-_PLANNING = re.compile(r"\b(?:plan|budget|roadmap|strategy|allocate|allocation|goal|retire|retirement|"
-                       r"emergency fund|how should i|help me (?:save|invest|pay))\b", re.IGNORECASE)
+_PLANNING = re.compile(r"\b(?:plan|budget|roadmap|strategy|allocate|allocation|goals?|retire|retirement|"
+                       r"emergency fund|how should i|help me (?:save|invest|pay)|down ?payment|"
+                       r"in \d+(?:\.\d+)?\s*(?:years?|yrs?))\b", re.IGNORECASE)
+# Statements carrying numbers that are really calculation / planning requests
+# ("Super senior with 7 lakh income under old regime", "Car 8 lakh in 3 years ...").
+_NOT_A_FACT_UPDATE = re.compile(
+    r"\b(?:tax|taxes|regime|surcharge|rebate|savings rate|debt[- ]to[- ]income|ratio|corpus|goals?|"
+    r"down ?payment|roadmap|retire\w*|in \d+(?:\.\d+)?\s*(?:years?|yrs?))\b",
+    re.IGNORECASE,
+)
 _PRONOUN_REF = re.compile(r"\b(?:it|that|those|these|them|they|this one|that one|which one|the first|the second|"
                           r"the third|the other|the same|previous one|last one|there)\b", re.IGNORECASE)
 _FOLLOWUP_OPENERS = re.compile(r"^\s*(?:and|what about|how about|also|same for|and for|then|ok(?:ay)?,?|so)\b", re.IGNORECASE)
@@ -183,7 +192,9 @@ class IntentClassifier:
         memory_commands: Optional[list] = None,
         extracted_facts: Optional[list] = None,
     ) -> IntentResult:
-        text = (message or "").strip()
+        from ..context.normalize import normalize_message
+
+        text = normalize_message((message or "").strip())
         entities = find_entities(text)
         product = find_product(text)
         words = len(text.split())
@@ -210,7 +221,10 @@ class IntentClassifier:
 
         if _WHAT_IF.search(text):
             intent = Intent.WHAT_IF
-        elif extracted_facts and "?" not in text and not _REQUEST_WORDS.search(text) and not _ARITHMETIC.search(text):
+        elif (
+            extracted_facts and "?" not in text and not _REQUEST_WORDS.search(text)
+            and not _ARITHMETIC.search(text) and not _NOT_A_FACT_UPDATE.search(text)
+        ):
             intent = Intent.MEMORY_UPDATE
         elif _ARITHMETIC.search(text) or _CALC_TOPIC_WITH_NUMBER.match(text):
             intent = Intent.CALCULATION
