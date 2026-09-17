@@ -195,7 +195,8 @@ _DECISION_WORDS = re.compile(
     r"\b(?:should\s+i|best|better|which\s+(?:one|option|is)|optimi[sz]e|strategy|afford|worth\s+it|"
     r"prioriti[sz]e|plan\s+my|what\s+do\s+i\s+do|help\s+me\s+(?:decide|plan|get\s+out|clear)|"
     r"trade[- ]?off|pros\s+and\s+cons|recommend|restructur|consolidat|refinanc|settle\w*|pay\s*off|payoff|"
-    r"avalanche|snowball|debt[- ]free|retire\w*)\b",
+    r"avalanche|snowball|debt[- ]free|retire\w*|right\s+(?:regime|choice|option|move)|save\s+(?:more\s+)?tax|"
+    r"tax\s+planning|minimi[sz]e|where\s+do\s+i\s+stand)\b",
     re.IGNORECASE,
 )
 _MULTI_ITEM = re.compile(r"\b(?:loans?|cards?|emis?|goals?|debts?|investments?|policies|properties)\b", re.IGNORECASE)

@@ -7,9 +7,12 @@ from pydantic import BaseModel, Field
 from .base import BaseTool, ToolMetadata
 from ..finance.engine import FinanceInputError
 from ..finance.tax import TAX_OPERATIONS, TAX_PARAMS, TAX_RULES, current_tax_year
+from ..finance.tax_extras import EXTRA_TAX_OPERATIONS, EXTRA_TAX_PARAMS
 
 _ALLOWED = {"gross_salary", "other_income", "regime", "tax_year", "age_category", "deductions",
-            "stcg_equity", "ltcg_equity", "ltcg_other"}
+            "stcg_equity", "ltcg_equity", "ltcg_other", "hra_exempt", "house_property_income"}
+_ALL_PARAMS_DOC = "compute_tax/compare_regimes(" + TAX_PARAMS + "); " + "; ".join(
+    f"{op}({args})" for op, args in EXTRA_TAX_PARAMS.items())
 
 
 _DEDUCTION_KEYS = {"section_80c", "section_80d_self", "section_80d_parents", "section_80ccd_1b",
@@ -93,8 +96,9 @@ def _legal_basis(operation: str, params: Dict[str, Any]) -> list:
 
 
 class TaxCalcInput(BaseModel):
-    operation: Literal["compute_tax", "compare_regimes"] = Field(
-        ..., description="compute_tax for one regime, compare_regimes for new vs old."
+    operation: Literal["compute_tax", "compare_regimes", "hra_exemption", "house_property_income",
+                       "capital_gains_tax", "advance_tax_plan", "itr_form_choice", "tax_saving_finder"] = Field(
+        ..., description="compute_tax for one regime, compare_regimes for new vs old, or a specialised calculation."
     )
     params: Dict[str, Any] = Field(default_factory=dict, description="Annual amounts in rupees.")
 
@@ -105,7 +109,9 @@ class TaxCalcTool(BaseTool):
         "Deterministic Indian income-tax calculator for resident individuals (tax years "
         + ", ".join(sorted(TAX_RULES))
         + "): slab tax, standard deduction, rebate with marginal relief, surcharge, cess, capital gains, "
-        "and new-vs-old regime comparison. Amounts are ANNUAL rupees. Params: " + TAX_PARAMS
+        "new-vs-old regime comparison, HRA exemption, house-property income, tax on one asset sale, advance-tax "
+        "instalments, which ITR form to file, and a finder for unused deductions. Amounts are ANNUAL rupees "
+        "unless the parameter says monthly. Operations and params: " + _ALL_PARAMS_DOC
     )
     args_schema: Type[BaseModel] = TaxCalcInput
 
@@ -117,6 +123,19 @@ class TaxCalcTool(BaseTool):
         super().__init__()
 
     async def execute(self, operation: str, params: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
+        if operation in EXTRA_TAX_OPERATIONS:
+            import inspect
+
+            fn = EXTRA_TAX_OPERATIONS[operation]
+            sig = inspect.signature(fn)
+            unknown = set(params) - set(sig.parameters)
+            if unknown:
+                raise FinanceInputError(f"Unknown parameter(s) for {operation}: {', '.join(sorted(unknown))}. "
+                                        f"Expected: {EXTRA_TAX_PARAMS[operation]}.")
+            missing = [n for n, p in sig.parameters.items() if p.default is inspect._empty and n not in params]
+            if missing:
+                raise FinanceInputError(f"Missing parameter(s) for {operation}: {', '.join(missing)}.")
+            return fn(**params)
         params = normalise_tax_params(params)
         unknown = set(params) - _ALLOWED
         if unknown:

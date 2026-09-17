@@ -851,6 +851,90 @@
    "verified_on": "2026-09-17",
    "keywords": "stress anxiety depression helpline suicide mental health",
    "notes": null
+  },
+  {
+   "id": "itr-forms",
+   "title": "Which ITR form to use (income of 2025-26)",
+   "topics": [
+    "tax",
+    "compliance"
+   ],
+   "tax_years": [
+    "2025-26"
+   ],
+   "regime": null,
+   "summary": "ITR-1 (Sahaj): resident individuals with total income up to ₹50 lakh from salary/pension, up to two house properties, interest and similar income, listed-equity LTCG up to ₹1.25 lakh (no carried-forward loss) and agricultural income up to ₹5,000. Not for directors, unlisted shareholders, foreign assets, crypto, business income or larger capital gains. ITR-2: other capital gains, more properties or foreign income without business income. ITR-3: business or professional income. ITR-4: presumptive business income with total income up to ₹50 lakh.",
+   "figures": {
+    "itr1_income_limit": 5000000,
+    "itr1_house_properties": 2,
+    "itr1_ltcg_112a_limit": 125000,
+    "itr1_agri_limit": 5000
+   },
+   "citation": {
+    "2025-26": "Section 139 and ITR forms notified for AY 2026-27, Income-tax Act, 1961"
+   },
+   "source_url": "https://cleartax.in/s/itr1",
+   "verified_on": "2026-09-17",
+   "keywords": "itr form itr-1 sahaj itr-2 itr-3 itr-4 sugam which form eligibility",
+   "notes": null
+  },
+  {
+   "id": "cii",
+   "title": "Cost Inflation Index (indexation)",
+   "topics": [
+    "tax",
+    "capital gains",
+    "property"
+   ],
+   "tax_years": [
+    "all"
+   ],
+   "regime": null,
+   "summary": "CII values (base 2001-02 = 100): 2010-11: 167, 2015-16: 254, 2020-21: 301, 2023-24: 348, 2024-25: 363, 2025-26: 376, 2026-27: 384. Indexation now applies only to the optional 20% rate for land or buildings bought before 23 July 2024.",
+   "figures": {
+    "2010-11": 167,
+    "2015-16": 254,
+    "2020-21": 301,
+    "2023-24": 348,
+    "2024-25": 363,
+    "2025-26": 376,
+    "2026-27": 384
+   },
+   "citation": {
+    "all": "CBDT notifications on the Cost Inflation Index"
+   },
+   "source_url": "https://cleartax.in/s/cost-inflation-index",
+   "verified_on": "2026-09-17",
+   "keywords": "cost inflation index cii indexation indexed cost property",
+   "notes": null
+  },
+  {
+   "id": "cg-reinvestment",
+   "title": "Saving tax on property gains by reinvesting",
+   "topics": [
+    "tax",
+    "capital gains",
+    "property"
+   ],
+   "tax_years": [
+    "2025-26",
+    "2026-27"
+   ],
+   "regime": null,
+   "summary": "Long-term gains on a house can be exempt if reinvested in another residential house (s.54, up to ₹10 crore) or in specified bonds within 6 months (s.54EC, up to ₹50 lakh). Gains on other long-term assets can be exempt if the net sale value is invested in a house (s.54F). Conditions on timing and lock-in apply.",
+   "figures": {
+    "s54_cap": 100000000,
+    "s54ec_cap": 5000000,
+    "s54ec_months": 6
+   },
+   "citation": {
+    "2025-26": "Sections 54, 54EC and 54F, Income-tax Act, 1961",
+    "2026-27": "Income-tax Act, 2025 — provisions corresponding to ss.54/54EC/54F of the 1961 Act (confirm the new section numbers)"
+   },
+   "source_url": "https://www.incometax.gov.in",
+   "verified_on": "2026-09-17",
+   "keywords": "54 54ec 54f reinvest capital gains exemption bonds house",
+   "notes": null
   }
  ]
 }

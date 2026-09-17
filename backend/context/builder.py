@@ -223,7 +223,8 @@ class ContextBuilder:
             for key in ("snapshot", "survival_budget", "plan", "comparison", "savings_move"):
                 if isinstance(out.get(key), dict) and out[key]:
                     lines.append(f"  {key}: {out[key]}")
-            for listing in ("what_if_extra", "warnings", "areas", "priorities"):
+            for listing in ("what_if_extra", "warnings", "areas", "priorities", "schedule", "opportunities",
+                            "tips", "why_not_itr1"):
                 if isinstance(out.get(listing), list) and out[listing]:
                     lines.append(f"  {listing}: {out[listing]}")
             for listing in ("buckets", "goals", "actions"):

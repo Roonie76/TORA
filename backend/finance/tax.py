@@ -130,6 +130,8 @@ def compute_tax(
     stcg_equity: float = 0.0,
     ltcg_equity: float = 0.0,
     ltcg_other: float = 0.0,
+    hra_exempt: float = 0.0,
+    house_property_income: float = 0.0,
     _return_internal: bool = False,
 ) -> Dict[str, Any]:
     """Tax for a resident individual for one tax year and regime."""
@@ -144,10 +146,29 @@ def compute_tax(
     stcg = _pos("stcg_equity", stcg_equity, allow_zero=True)
     ltcg_eq = _pos("ltcg_equity", ltcg_equity, allow_zero=True)
     ltcg_ot = _pos("ltcg_other", ltcg_other, allow_zero=True)
-    if salary + other + stcg + ltcg_eq + ltcg_ot <= 0:
+    hra = _pos("hra_exempt", hra_exempt, allow_zero=True)
+    try:
+        hp = float(house_property_income or 0.0)
+    except (TypeError, ValueError):
+        raise FinanceInputError("'house_property_income' must be a number (negative for a loss).")
+    if salary + other + stcg + ltcg_eq + ltcg_ot + max(hp, 0.0) <= 0:
         raise FinanceInputError("Provide at least one income amount.")
 
     notes: List[str] = []
+    if hra:
+        if regime == "old":
+            salary = max(0.0, salary - min(hra, salary))
+        else:
+            notes.append("HRA exemption is not available in the new regime and was ignored.")
+    if hp < 0:
+        if regime == "old":
+            if hp < -200000:
+                notes.append("House-property loss set off against other income is limited to ₹2,00,000; "
+                             "the rest can be carried forward.")
+            hp = max(hp, -200000.0)
+        else:
+            notes.append("A house-property loss cannot be set off against other income in the new regime.")
+            hp = 0.0
     # 1. Normal (slab-rate) income
     std = min(reg["standard_deduction"], salary) if salary else 0.0
     caps = rules["deduction_caps"]
@@ -167,7 +188,7 @@ def compute_tax(
     if ignored:
         notes.append(f"Not allowed under the {regime} regime and ignored: {', '.join(sorted(ignored))}.")
     total_deductions = sum(applied.values())
-    normal_income = max(0.0, salary - std + other - total_deductions)
+    normal_income = max(0.0, salary - std + other + hp - total_deductions)
 
     # 2. Special-rate income; unused basic exemption can absorb it (residents)
     cg = rules["capital_gains"]
@@ -219,7 +240,8 @@ def compute_tax(
             gross_salary=salary * scale, other_income=other * scale, regime=regime, tax_year=ty,
             age_category=age_category, deductions={k: v * scale for k, v in applied.items()},
             stcg_equity=stcg * scale, ltcg_equity=ltcg_eq * scale if ltcg_eq else 0.0,
-            ltcg_other=ltcg_other * scale, _return_internal=True,
+            ltcg_other=ltcg_other * scale, hra_exempt=0.0, house_property_income=hp * scale,
+            _return_internal=True,
         ) if scale < 1 else None
         if at_thr is not None:
             limit = at_thr["_tax_with_surcharge"] + (total_income - threshold)
@@ -232,7 +254,7 @@ def compute_tax(
     if _return_internal:
         return {"_tax_with_surcharge": tax_with_surcharge}
 
-    gross_total = salary + other + stcg + ltcg_eq + ltcg_other
+    gross_total = _pos("gross_salary", gross_salary, allow_zero=True) + other + max(hp, 0.0) + stcg + ltcg_eq + ltcg_other
     result = {
         "operation": "compute_tax",
         "tax_year": ty,
@@ -240,7 +262,7 @@ def compute_tax(
         "regime": regime,
         "inputs": {"gross_salary": salary, "other_income": other, "age_category": age_category,
                    "deductions": deductions or {}, "stcg_equity": stcg, "ltcg_equity": ltcg_eq,
-                   "ltcg_other": ltcg_other},
+                   "ltcg_other": ltcg_other, "hra_exempt": hra, "house_property_income": hp},
         "standard_deduction": _r(std),
         "deductions_applied": {k: _r(v) for k, v in applied.items()},
         "taxable_normal_income": _r(normal_income),

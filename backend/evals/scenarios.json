@@ -5366,6 +5366,200 @@
           }
         }
       ]
+    },
+    {
+      "id": "tax-hra",
+      "category": "tax",
+      "description": "HRA exemption",
+      "turns": [
+        {
+          "user": "My basic is 50k, HRA 20k and I pay 25k rent in Mumbai. How much HRA is exempt?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "hra_exemption",
+                  "params": {
+                    "basic_monthly": 50000,
+                    "hra_received_monthly": 20000,
+                    "rent_paid_monthly": 25000,
+                    "city": "Mumbai"
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "tool_output": {
+              "tax_calc.exempt_hra": 240000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "tax-property-sale",
+      "category": "tax",
+      "description": "Property sale with indexation choice",
+      "turns": [
+        {
+          "user": "I bought a flat in June 2010 for 30 lakh and sold it in August 2026 for 90 lakh. What is my tax?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "capital_gains_tax",
+                  "params": {
+                    "asset_type": "property",
+                    "purchase_date": "2010-06-01",
+                    "sale_date": "2026-08-01",
+                    "purchase_cost": 3000000,
+                    "sale_value": 9000000
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "tool_output": {
+              "tax_calc.tax_with_cess": 437173.8
+            },
+            "system_contains": [
+              "with indexation"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "tax-advance",
+      "category": "tax",
+      "description": "Advance tax behind schedule",
+      "turns": [
+        {
+          "user": "My tax this year will be about 1.5 lakh, TDS 40k, I've paid 10k advance tax. What do I pay and when?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "advance_tax_plan",
+                  "params": {
+                    "estimated_tax": 150000,
+                    "tds_expected": 40000,
+                    "paid_so_far": 10000,
+                    "tax_year": "2026-27",
+                    "today": "2026-09-17"
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "tool_output": {
+              "tax_calc.pay_by_next_due_date": 72500,
+              "tax_calc.next_due_date": "2026-12-15"
+            },
+            "system_contains": [
+              "schedule"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "tax-itr-form",
+      "category": "tax",
+      "description": "ITR form choice",
+      "turns": [
+        {
+          "user": "I have salary of 9 lakh and sold mutual funds with 2 lakh long-term gains. Which ITR form?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "itr_form_choice",
+                  "params": {
+                    "total_income": 1100000,
+                    "ltcg_112a": 200000
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "tool_output": {
+              "tax_calc.recommended_form": "ITR-2"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "tax-saving-finder",
+      "category": "tax",
+      "description": "Unused deductions and regime check",
+      "turns": [
+        {
+          "user": "I earn 15 lakh, invest 50k in 80C, pay 30k rent in Bengaluru with 60k basic and 25k HRA. Am I on the right regime? How can I save tax?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "tax_saving_finder",
+                  "params": {
+                    "gross_salary": 1500000,
+                    "section_80c": 50000,
+                    "rent_paid_monthly": 30000,
+                    "basic_monthly": 60000,
+                    "hra_received_monthly": 25000,
+                    "metro": false,
+                    "tax_year": "2026-27"
+                  }
+                }
+              }
+            ]
+          },
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "tool_output": {
+              "tax_calc.better_regime_now": "new"
+            },
+            "system_contains": [
+              "opportunities"
+            ],
+            "complexity": "complex"
+          }
+        }
+      ]
     }
   ]
 }

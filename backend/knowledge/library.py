@@ -193,6 +193,13 @@ class RulesLibrary:
                 if lib_value is None or abs(float(lib_value) - float(engine_value)) > 1e-6:
                     out.append(f"{rid}.{key} = {lib_value} but the tax engine uses {engine_value} for {ty}")
             slabs = [[None if u == float("inf") else u, round(r * 100, 4)] for u, r in rules["new"]["slabs"]["normal"]]
+            if ty == sorted(TAX_RULES)[-1]:
+                from ..finance.tax_extras import CII
+
+                cii_rule = self.get("cii")
+                for year, value in (cii_rule.figures if cii_rule else {}).items():
+                    if CII.get(year) != value:
+                        out.append(f"cii.{year} = {value} but the tax engine uses {CII.get(year)}")
             lib_slabs = [[u, float(r)] for u, r in (self.get("new-regime-slabs").figures.get("slabs") or [])]
             if slabs != lib_slabs:
                 out.append(f"new-regime-slabs differ from the tax engine for {ty}")
