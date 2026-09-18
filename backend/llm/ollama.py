@@ -1,3 +1,4 @@
+import re
 import json
 import os
 import time
@@ -78,6 +79,29 @@ def normalize_ollama_host(raw_host: Optional[str]) -> str:
     if not host_str.startswith("http://") and not host_str.startswith("https://"):
         return f"http://{host_str}"
     return host_str
+
+
+
+# A cut at the token budget lands mid-word ("saves you ₹ …"). Live, on a debt plan, the tail that
+# got cut was an optional extra, so the answer is better ended at the last complete sentence than
+# shown with a dangling fragment. Only a short fragment is dropped: if the model was mid-way
+# through a long paragraph, cutting back that far would lose more than it tidies.
+_SENTENCE_END = re.compile(r"(?s)^.*[.!?)\]](?=[\s\*_]*$|\s)")
+_TRUNCATION_NOTE = "\n\n(Answer shortened — ask me to continue for more detail.)"
+MAX_FRAGMENT_CHARS = 400
+
+
+def end_cleanly(content: str) -> str:
+    """Trim a length-truncated answer back to its last complete sentence."""
+    text = (content or "").rstrip()
+    if not text:
+        return text
+    match = _SENTENCE_END.match(text)
+    if match and len(text) - len(match.group(0)) <= MAX_FRAGMENT_CHARS:
+        trimmed = match.group(0).rstrip()
+        if trimmed:
+            return trimmed + _TRUNCATION_NOTE
+    return text + " …" + _TRUNCATION_NOTE
 
 
 class OllamaProvider(LLMProvider):
@@ -274,9 +298,10 @@ class OllamaProvider(LLMProvider):
             raise LLMResponseError(message="LLM response was truncated due to context length limits.",
                                    detail="done_reason=length")
         if content and done_reason == "length" and opts.get("num_predict"):
-            tail = " …\n\n(Answer shortened — ask me to continue for more detail.)"
-            content = content.rstrip() + tail
-            await on_token(tail)
+            cleaned = end_cleanly(content)
+            tail = cleaned[len(content.rstrip()):] if cleaned.startswith(content.rstrip()) else None
+            content = cleaned
+            await on_token(tail if tail is not None else "\n" + _TRUNCATION_NOTE.strip())
         record_llm_usage((time.monotonic() - started) * 1000, final, target_model)
         return LLMResponse(content=content, model=target_model, done=True, raw=final)
 
@@ -360,8 +385,9 @@ class OllamaProvider(LLMProvider):
                 )
 
             if content and done_reason == "length" and opts.get("num_predict") and not payload.get("format"):
-                # Answer hit TORA_MAX_ANSWER_TOKENS: make the cut visible instead of ending mid-thought.
-                content = content.rstrip() + " …\n\n(Answer shortened — ask me to continue for more detail.)"
+                # Answer hit TORA_MAX_ANSWER_TOKENS: end at the last complete sentence and say so,
+                # instead of leaving the user with a dangling fragment.
+                content = end_cleanly(content)
 
             record_llm_usage((time.monotonic() - started) * 1000, data, target_model)
             return LLMResponse(
