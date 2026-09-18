@@ -33,12 +33,16 @@ from typing import Any, List, Optional
 # without its legal basis is a worse answer delivered faster. Tax can join this list once the
 # rules library is folded into the direct answer.
 DIRECT_TOOLS = ("finance_calc",)
-DIRECT_INTENTS = ("calculation", "financial_qa", "what_if")
+# "planning" is here because the classifier reads "invest monthly to reach 5 lakh in 3 years" as
+# planning when it is a single sum. The operation list below, not the intent, is what keeps a
+# genuine plan away from this path.
+DIRECT_INTENTS = ("calculation", "financial_qa", "what_if", "planning")
 # Operations that exist to weigh one option against another. The figures are only half the
 # answer; the recommendation is the other half, and that is the model's job.
 COMPARISON_OPERATIONS = ("compare_regimes", "prepay_vs_invest", "rent_vs_buy", "loan_tenure_choice",
                          "consolidation_check", "tax_saving_finder", "financial_health_check",
-                         "itr_form_choice", "budget_plan", "debt_rescue_plan", "retirement_plan")
+                         "itr_form_choice", "budget_plan", "debt_rescue_plan", "retirement_plan",
+                         "goal_plan", "debt_payoff", "minimum_due_trap", "debt_snapshot")
 
 # A question about what to do needs judgement, and judgement is what the model is for.
 _WANTS_JUDGEMENT = re.compile(

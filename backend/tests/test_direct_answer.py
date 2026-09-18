@@ -97,3 +97,20 @@ class TestWhatMustFallThroughToTheModel:
     def test_an_engine_with_no_summary_is_left_to_the_model(self):
         assert answer_for("EMI on 20 lakh at 8.5% for 20 years?",
                           {"operation": "emi", "emi": 17356.46}) is None
+
+
+class TestIntentIsNotTheGate:
+    """The classifier reads some single sums as "planning". The operation list, not the intent,
+    is what decides — so a sum stays fast and a real plan still gets written."""
+
+    def test_a_single_sum_read_as_planning_is_still_answered_outright(self):
+        out = answer_for("How much do I need to invest monthly to reach 5 lakh in 3 years at 12%?",
+                         engine.required_sip(target_amount=500000, annual_return=12, years=3))
+        assert out is not None and "₹11,492/month" in out
+
+    @pytest.mark.parametrize("operation", [
+        "retirement_plan", "budget_plan", "goal_plan", "debt_payoff", "financial_health_check",
+    ])
+    def test_a_real_plan_is_still_written_by_the_model(self, operation):
+        assert answer_for("Plan this for me in 3 years",
+                          {"operation": operation, "summary": "A plan."}) is None

@@ -125,3 +125,23 @@ merely asked for is advisory.** Locked slots for the figures, the block for the 
    decoding needs a draft model, which needs the RAM the slim build just freed.
 4. **A two-model cascade** (a tiny model for the planner) is now cheaper to try, for the
    same reason — but see item 1 first.
+
+## Tier 0: the turns that call no model at all
+
+Confirmed live on localhost, with the trace showing the model call count:
+
+| question | before | after | model calls |
+|---|---|---|---|
+| "EMI for a 50 lakh home loan at 9% for 20 years?" | ~40 s | **0.04 s** | **0** |
+| "How much monthly to reach 5 lakh in 3 years at 12%?" | 235 s | **2.6 s** | 1 (planner only) |
+| "Should I take that loan?" | 367 s | 367 s | 3 — correctly left to the model |
+
+All 31 engine operations already write their own summary sentence, so for an unambiguous
+calculation there is nothing for a model to add. The fast path had removed the planner call; this
+removes the answer call.
+
+The gate is narrow on purpose, and the eval suite wrote most of it. tax_calc is excluded because
+every tax answer has to cite the section it rests on and the engine summary does not carry it.
+The comparison engines are excluded because their figures are half the answer. Anything asking
+what to *do* — "should I", "which is better", "prepay or invest" — goes to the model, which is
+what the model is for.

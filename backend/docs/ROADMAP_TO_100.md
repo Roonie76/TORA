@@ -9,8 +9,8 @@ Today's honest position, from `backend/docs/TORA_STATUS.md` and the measurements
 |---|---|---|
 | Features | 88% | the five named gaps closed |
 | Correctness & safety | 80% | no figure reaches a user that an engine did not produce |
-| Performance for real users | 40% | no common question waits on the model at all |
-| Operations | 35% | it runs itself: CI, dashboard, a completed manual pass |
+| Performance for real users | 40% -> **60%** | no common question waits on the model at all |
+| Operations | 35% -> **50%** | it runs itself: CI, dashboard, a completed manual pass |
 
 ## The reframe that makes 100% possible
 
@@ -37,16 +37,16 @@ Once every question is in a tier, "performance" stops meaning "the model is slow
 
 ## The work, in order
 
-### 1. CI wiring  *(ops 35% -> 50%)*
+### 1. CI wiring  *(ops 35% -> 50%)*  — **DONE**
 `python -m backend.check` is comprehensive and nothing runs it automatically. A workflow on every
 push and pull request. **Done when** a red gate blocks a merge.
 
-### 2. Tier 0: deterministic answers  *(performance 40% -> 70%)*
+### 2. Tier 0: deterministic answers  *(performance 40% -> 70%)*  — **DONE for the finance engine**
 For every turn where the engines produced a complete result and the question matches a known shape,
 render the whole answer from a template and never call the model. The figure block proves the data
-is there; this adds the sentence around it. **Done when** the common questions in the eval suite
-answer in under a second, with the same content the model would have produced, and a live run
-confirms it.
+is there; this adds the sentence around it. Live: an EMI question now answers in **0.04 s with no model call**, and a required-SIP
+question in 2.6 s. Still open: tax, which needs the rules library folded in so the answer keeps
+its legal basis.
 
 ### 3. Answer cache  *(performance 70% -> 80%)*
 The same question against unchanged facts has the same answer. Key on (question, profile version,
