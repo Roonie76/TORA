@@ -145,6 +145,26 @@ def slot_table(slots: Dict[str, str], limit: int = MAX_SLOTS) -> str:
     )
 
 
+# The slot value already carries its unit ("9 months", "\u20b915,000"), so a model that writes
+# "{{...}} months" or "\u20b9{{...}}" produces "9 months months" and "\u20b9\u20b915,000" after
+# substitution. Seen live in a debt plan, so it is cleaned up rather than left to the prompt.
+_DOUBLE_RUPEE = re.compile(r"\u20b9\s*\u20b9+")
+_DOUBLE_UNIT = re.compile(
+    r"\b(months?|years?|weeks?|days?|lakhs?|lacs?|crores?)(\*{0,2})\s+\1\b(\(s\))?",
+    re.IGNORECASE,
+)
+
+
+def _tidy(text: str) -> str:
+    text = _DOUBLE_RUPEE.sub("\u20b9", text)
+    for _ in range(2):                       # "month month month" needs a second pass
+        cleaned = _DOUBLE_UNIT.sub(r"\1\2", text)
+        if cleaned == text:
+            break
+        text = cleaned
+    return text
+
+
 def render(text: str, slots: Dict[str, str]) -> Tuple[str, List[str]]:
     """Substitute {{slot}} placeholders; return the text and any unknown names."""
     unknown: List[str] = []
@@ -159,7 +179,7 @@ def render(text: str, slots: Dict[str, str]) -> Tuple[str, List[str]]:
         unknown.append(name)
         return ""
 
-    return _PLACEHOLDER.sub(replace, text or ""), unknown
+    return _tidy(_PLACEHOLDER.sub(replace, text or "")), unknown
 
 
 def _number_key(token: str) -> Optional[float]:

@@ -145,3 +145,27 @@ def test_rounding_drift_is_not_a_stray_figure(rescue_slots):
     # but a re-scaled or invented figure is still caught
     assert stray_numbers("Your debt is ₹37 Lakh.", rescue_slots) == ["₹37 Lakh"]
     assert stray_numbers("You save ₹2,900 in interest.", rescue_slots) == ["₹2,900"]
+
+
+class TestUnitDuplication:
+    """Seen live: the slot value carries its own unit, so "{{x}} months" rendered as
+    "9 months months" and "₹{{y}}" as "₹₹15,000" in a debt rescue plan."""
+
+    def test_repeated_unit_after_a_slot_is_dropped(self):
+        slots = {"plan.timeline": "9 months", "plan.sooner": "1 month"}
+        text = "Cleared in **{{plan.timeline}}** months, or **{{plan.sooner}}** month(s) sooner."
+        out, unknown = render(text, slots)
+        assert out == "Cleared in **9 months**, or **1 month** sooner."
+        assert unknown == []
+
+    def test_repeated_rupee_sign_is_dropped(self):
+        out, _ = render("Never below ₹{{plan.min}}.", {"plan.min": "₹15,000"})
+        assert out == "Never below ₹15,000."
+
+    def test_a_genuine_repeat_across_a_sentence_is_left_alone(self):
+        out, _ = render("{{a}} now. Months matter.", {"a": "9 months"})
+        assert out == "9 months now. Months matter."
+
+    def test_different_units_are_not_merged(self):
+        out, _ = render("{{a}} years away.", {"a": "9 months"})
+        assert out == "9 months years away."
