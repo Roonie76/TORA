@@ -52,6 +52,7 @@ class TurnTrace:
     complexity: Optional[Dict[str, Any]] = None
     overflow_retry: bool = False
     grounding: Optional[Dict[str, Any]] = None
+    slots: Optional[Dict[str, Any]] = None      # locked figures: offered / used / stray / action
     status: str = "in_progress"
     http_status: Optional[int] = None
     error_type: Optional[str] = None

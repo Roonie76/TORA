@@ -1,6 +1,6 @@
 # TORA — status
 
-Generated from the code on 2026-09-17 by `python -m backend.status`. Everything under **Built** is read out of the running system (registered tools, engine operations, endpoints, intents, fact types, the rules library, the eval suite). **Partial** and **Open** are the judgement calls, each with a pointer to the code or test behind it.
+Generated from the code on 2026-09-18 by `python -m backend.status`. Everything under **Built** is read out of the running system (registered tools, engine operations, endpoints, intents, fact types, the rules library, the eval suite). **Partial** and **Open** are the judgement calls, each with a pointer to the code or test behind it.
 
 ## At a glance
 
@@ -13,8 +13,8 @@ Generated from the code on 2026-09-17 by `python -m backend.status`. Everything 
 | Intents | 12 |
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
-| Offline eval scenarios | 158 (254 turns) |
-| Backend tests | 1053 |
+| Offline eval scenarios | 160 (256 turns) |
+| Backend tests | 1065 |
 | Frontend tests | 33 |
 
 ## Built
@@ -90,6 +90,10 @@ Remembered fact types:
 | rent | `rent` |
 | savings | `savings` |
 
+### Locked figures
+
+A turn that ran an engine carries a slot table: every figure it produced, already formatted, offered to the answer model as `{{slot}}` placeholders. Placeholders are substituted after generation, and any number in the reply that matches no slot (beyond rounding) earns one rewrite naming the offender. Only deterministic tools contribute slots — researched figures stay in the external-data block (`backend/answer/slots.py`; `TORA_LOCKED_SLOTS=off` disables it).
+
 ### Documents
 
 Uploads are parsed deterministically and their figures enter memory only after the user confirms: `ais`, `bank_statement`, `form16`, `salary_slip`. Identifiers (PAN, account numbers, phones, emails) are masked, and a document's text is treated as untrusted external data, never as instructions (`backend/documents/reader.py`).
@@ -109,22 +113,22 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1053 unit tests, 158 offline scenarios, the rules-library check.
-- Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 7, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 18, tool_selection 9.
+- `python -m backend.check`: 1065 unit tests, 160 offline scenarios, the rules-library check.
+- Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
 - Frontend: 33 tests under `frontend/src/tests/tora/`.
 
 ### Configuration
 
-`TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
+`TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
 
 ## Partial — built, with a named gap
 
 | area | what exists | what's missing | evidence |
 |---|---|---|---|
 | Memory | current / historical / hypothetical / retracted states, revision chains, corrections kept apart from changes over time, per-fact previous values | confidence per fact, and temporal queries (“what was it in March?”) | `backend/context/financial.py` |
-| Answer fidelity | engines return ready comparison rows and pre-formatted rupee figures; the grounding check regenerates or annotates unsupported figures | locked-slot answers: the model writes prose around placeholders it cannot alter, so a wrong number becomes structurally impossible | `stress report findings 8-10; verification W04` |
+| Answer fidelity | locked slots: every figure a turn may contain comes from the engines, offered as named placeholders; a number matching no slot earns one rewrite, and the grounding check still runs behind it | small models copy the values rather than writing the placeholders (harmless, since the slot list also acts as the whitelist) — worth revisiting with a stronger model | `backend/answer/slots.py, backend/tests/test_locked_slots.py` |
 | Prompt size | one system prompt with all rules, ~6,000 tokens a turn | intent-sliced prompts: send only the sections the intent needs | `backend/prompts/tora.py; traces llm.prompt_tokens` |
 | What-if | per-engine scenarios (sip_change_impact, what_if_extra, prepay/rent-vs-buy, loan tenure) and hypothetical facts kept out of the profile | a general scenario engine: change several facts at once, re-run every relevant engine, compare baseline vs scenario | `backend/finance/, state kept in FinancialProfile.scenarios` |
 | Research | multi-source search, evidence extraction, credibility, conflict detection, per-topic research records and follow-ups | an autonomous re-research loop when evidence is thin, conflicting or stale | `backend/research/` |
@@ -136,15 +140,14 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ## Open — in priority order
 
-1. **Locked-slot answers.** The engine emits the numeric skeleton; the model writes prose around placeholders and cannot alter a figure. Attacks the failure mode the live run actually measured.
-2. **Intent-sliced prompts.** Fewer competing rules per turn: faster on CPU, less hedging.
-3. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.
-4. **General scenario engine.** Change several facts at once and re-run every relevant engine.
-5. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
-6. **Tool retries and circuit breakers.**
-7. **Broader tax coverage.**
-8. **Observability dashboard** over the existing metrics and traces.
-9. **CI wiring** for `backend.check`.
+1. **Intent-sliced prompts.** Fewer competing rules per turn: faster on CPU, less hedging.
+2. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.
+3. **General scenario engine.** Change several facts at once and re-run every relevant engine.
+4. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
+5. **Tool retries and circuit breakers.**
+6. **Broader tax coverage.**
+7. **Observability dashboard** over the existing metrics and traces.
+8. **CI wiring** for `backend.check`.
 
 ## Known limits
 

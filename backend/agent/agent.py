@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import re
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Tuple, Union
 from dataclasses import dataclass
 
 from ..llm.base import (
@@ -14,6 +14,7 @@ from ..llm.base import (
 from ..prompts.tora import TORA_SYSTEM_PROMPT
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
+from ..answer import slots as answer_slots
 from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan, profile_plan
 from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
@@ -178,6 +179,11 @@ def _is_small_talk(message: str, intent: Any) -> bool:
 
 def _complex_think() -> bool:
     return os.getenv("TORA_COMPLEX_THINK", "off").strip().lower() in ("1", "on", "true", "yes")
+
+
+def _locked_slots_enabled() -> bool:
+    """Phase 15: the engine owns every figure in the answer (TORA_LOCKED_SLOTS=off to disable)."""
+    return os.getenv("TORA_LOCKED_SLOTS", "on").strip().lower() not in ("0", "off", "false", "no")
 
 
 def _fast_path_enabled() -> bool:
@@ -515,8 +521,12 @@ class ToraAgent:
             conversation_state.record_tool_results(effective_tool_context, query=intent.resolved_query or message)
 
         # 3. Build Initial Context
+        locked_slots: Dict[str, str] = {}
+        if _locked_slots_enabled():
+            locked_slots = answer_slots.build_slots(effective_tool_context)
         account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands, active_profile)
-                        + _negative_amount_note(message) + _empty_memory_note(intent, active_profile))
+                        + _negative_amount_note(message) + _empty_memory_note(intent, active_profile)
+                        + answer_slots.slot_table(locked_slots))
         if account_note:
             system_prompt = (system_prompt or self.default_system_prompt) + account_note
         messages = self._build_messages(
@@ -646,8 +656,23 @@ class ToraAgent:
 
         logger.info("Agent response generated successfully with model '%s'.", llm_response.model)
 
-        # 5. Numeric grounding verification (Phase 4B)
+        # 5a. Locked slots (Phase 15): placeholders become the engine's own figures, and a
+        # number the model typed that matches no slot earns one rewrite.
         content = llm_response.content
+        slots_report: Optional[Dict[str, Any]] = None
+        if locked_slots and content:
+            content, slots_report = await self._apply_slots(
+                content=content,
+                slots=locked_slots,
+                messages=final_messages,
+                model=model,
+                options=options,
+                profile=active_profile,
+            )
+            if trace is not None:
+                trace.slots = slots_report
+
+        # 5b. Numeric grounding verification (Phase 4B)
         grounding: Optional[Dict[str, Any]] = None
         mode = _grounding_mode()
         if mode != "off" and content:
@@ -689,6 +714,56 @@ class ToraAgent:
             grounding=grounding,
             complexity=complexity,
         )
+
+    async def _apply_slots(
+        self,
+        content: str,
+        slots: Dict[str, str],
+        messages: List[Dict[str, str]],
+        model: Optional[str],
+        options: Dict[str, Any],
+        profile: Any = None,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Replace {{slot}} with the engine's figures; ask for one rewrite if a figure was invented."""
+        rendered, unknown = answer_slots.render(content, slots)
+        known_extra = [f.format_value() for f in profile.iter_current_facts()] if isinstance(profile, FinancialProfile) else []
+        stray = answer_slots.stray_numbers(rendered, slots, extra_allowed=known_extra)
+        report: Dict[str, Any] = {
+            "offered": len(slots),
+            "used": len(answer_slots._PLACEHOLDER.findall(content)),
+            "unknown": unknown,
+            "stray": stray,
+            "action": "none",
+        }
+        if not stray and not unknown:
+            return rendered, report
+
+        logger.info("Locked slots: %d stray figure(s) %s, %d unknown placeholder(s) — rewriting once.",
+                    len(stray), stray[:4], len(unknown))
+        corrected = [dict(m) for m in messages]
+        corrected[0] = {
+            "role": corrected[0]["role"],
+            "content": corrected[0]["content"] + "\n\n## Locked Figures Correction\n"
+            + answer_slots.repair_instruction(stray, unknown, slots),
+        }
+        try:
+            retry = await self.llm_provider.generate(messages=corrected, model=model,
+                                                     options=options if options else None)
+        except Exception as exc:  # noqa: BLE001 — keep the first answer if the rewrite fails
+            logger.warning("Locked-slot rewrite failed: %s", exc)
+            report["action"] = "rewrite_failed"
+            return rendered, report
+        if not retry.content:
+            report["action"] = "rewrite_empty"
+            return rendered, report
+        second, second_unknown = answer_slots.render(retry.content, slots)
+        second_stray = answer_slots.stray_numbers(second, slots, extra_allowed=known_extra)
+        if len(second_stray) + len(second_unknown) < len(stray) + len(unknown):
+            report.update({"action": "rewritten", "stray_after": second_stray, "unknown_after": second_unknown})
+            return second, report
+        # The rewrite was no better: keep the first answer and let grounding annotate it.
+        report["action"] = "kept_first"
+        return rendered, report
 
     async def _ground(
         self,

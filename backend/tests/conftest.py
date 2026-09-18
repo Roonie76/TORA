@@ -4,6 +4,9 @@ import os
 os.environ.setdefault("TORA_SESSION_DB", ":memory:")
 # Most agent tests script the planner's reply; the Phase 7 fast path has its own tests.
 os.environ.setdefault("TORA_FAST_PATH", "off")
+# Locked slots spend a model call on a rewrite, which tests that script a fixed sequence of
+# answers would mis-count; test_locked_slots.py and the offline evals exercise it turned on.
+os.environ.setdefault("TORA_LOCKED_SLOTS", "off")
 
 import pytest
 

@@ -1094,7 +1094,7 @@
     {
       "id": "grounding-hallucinated-amount",
       "category": "grounding",
-      "description": "Persistent unsupported amounts are annotated",
+      "description": "Persistent unsupported amounts are annotated (locked slots off: this exercises the grounding fallback)",
       "turns": [
         {
           "user": "What would the EMI be for a 20 lakh home loan at 8.5% for 20 years?",
@@ -1127,7 +1127,8 @@
             ]
           }
         }
-      ]
+      ],
+      "locked_slots": false
     },
     {
       "id": "grounding-derived",
@@ -3835,7 +3836,7 @@
     {
       "id": "ground-hallucinated-tax",
       "category": "grounding",
-      "description": "Wrong tax figure is corrected",
+      "description": "Wrong tax figure is corrected (locked slots off: this exercises the grounding fallback)",
       "turns": [
         {
           "user": "Tax on a 13.75 lakh salary?",
@@ -3861,6 +3862,45 @@
           ],
           "expect": {
             "grounding_action": "regenerated"
+          }
+        }
+      ],
+      "locked_slots": false
+    },
+    {
+      "id": "slots-tax-rescaled-figure",
+      "category": "tax",
+      "description": "A re-scaled rupee figure (lakh instead of thousand) is rewritten from the engine's own string",
+      "turns": [
+        {
+          "user": "Tax on a 13.75 lakh salary?",
+          "plan": {
+            "thought": "tax",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "tax_calc",
+                "arguments": {
+                  "operation": "compute_tax",
+                  "params": {
+                    "gross_salary": 1375000
+                  }
+                }
+              }
+            ]
+          },
+          "answers": [
+            "Your tax works out to ₹75 lakh for the year.",
+            "Your tax for the year is {{compute_tax.total_tax}}."
+          ],
+          "expect": {
+            "tools": [
+              "tax_calc"
+            ],
+            "answer_not_contains": [
+              "75 lakh"
+            ],
+            "grounding_action": "none"
           }
         }
       ]
@@ -4312,7 +4352,7 @@
     {
       "id": "acct-invented-figure",
       "category": "accounts",
-      "description": "Signed-in: a made-up spending figure is caught",
+      "description": "Signed-in: a made-up spending figure is caught (locked slots off: this exercises the grounding fallback)",
       "signed_in": true,
       "turns": [
         {
@@ -4386,7 +4426,8 @@
             "grounding_action": "regenerated"
           }
         }
-      ]
+      ],
+      "locked_slots": false
     },
     {
       "id": "acct-anonymous-no-tool",
@@ -5035,7 +5076,7 @@
     {
       "id": "debt-invented-months",
       "category": "debt",
-      "description": "A made-up payoff time is rewritten",
+      "description": "A made-up payoff time is rewritten (locked slots off: this exercises the grounding fallback)",
       "turns": [
         {
           "user": "How fast can I clear a 1.55 lakh card at 42% with 7750 minimum and a 3 lakh loan at 14% with 10k EMI? I earn 70k, essentials 35k.",
@@ -5075,6 +5116,64 @@
           ],
           "expect": {
             "grounding_action": "regenerated"
+          }
+        }
+      ],
+      "locked_slots": false
+    },
+    {
+      "id": "slots-debt-invented-months",
+      "category": "debt",
+      "description": "An invented payoff time is rewritten from the engine's figures before grounding sees it",
+      "turns": [
+        {
+          "user": "How fast can I clear a 1.55 lakh card at 42% with 7750 minimum and a 3 lakh loan at 14% with 10k EMI? I earn 70k, essentials 35k.",
+          "plan": {
+            "thought": "debt",
+            "requires_tools": true,
+            "steps": [
+              {
+                "tool_name": "finance_calc",
+                "arguments": {
+                  "operation": "debt_rescue_plan",
+                  "params": {
+                    "debts": [
+                      {
+                        "name": "credit card",
+                        "balance": 155000,
+                        "apr": 42,
+                        "min_payment": 7750
+                      },
+                      {
+                        "name": "personal loan",
+                        "balance": 300000,
+                        "apr": 14,
+                        "min_payment": 10000
+                      }
+                    ],
+                    "monthly_income": 70000,
+                    "essential_expenses": 35000
+                  }
+                }
+              }
+            ]
+          },
+          "answers": [
+            "You will be debt-free in about 6 months and pay ₹12,345 in interest.",
+            "You will be debt-free in {{debt_rescue_plan.plan.months_to_debt_free}} paying {{debt_rescue_plan.monthly_budget_for_debt}} a month, with {{debt_rescue_plan.interest_on_this_plan}} of interest."
+          ],
+          "expect": {
+            "tools": [
+              "finance_calc"
+            ],
+            "answer_contains": [
+              "15 months"
+            ],
+            "answer_not_contains": [
+              "6 months",
+              "12,345"
+            ],
+            "grounding_action": "none"
           }
         }
       ]
@@ -5340,7 +5439,7 @@
     {
       "id": "advice-invented-breakeven",
       "category": "advice",
-      "description": "An invented comparison figure is rewritten",
+      "description": "An invented comparison figure is rewritten (locked slots off: this exercises the grounding fallback)",
       "turns": [
         {
           "user": "Prepay or invest? 30 lakh home loan at 8.5%, 15 years left, 10k spare a month.",
@@ -5370,7 +5469,8 @@
             "grounding_action": "regenerated"
           }
         }
-      ]
+      ],
+      "locked_slots": false
     },
     {
       "id": "rules-80c",
@@ -5400,7 +5500,7 @@
     {
       "id": "rules-invented-limit",
       "category": "rules",
-      "description": "A wrong limit is rewritten",
+      "description": "A wrong limit is rewritten (locked slots off: this exercises the grounding fallback)",
       "turns": [
         {
           "user": "What is the 80C limit?",
@@ -5412,7 +5512,8 @@
             "grounding_action": "regenerated"
           }
         }
-      ]
+      ],
+      "locked_slots": false
     },
     {
       "id": "rules-recovery",

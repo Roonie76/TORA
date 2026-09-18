@@ -36,11 +36,12 @@ PARTIAL: List[Tuple[str, str, str, str]] = [
                "corrections kept apart from changes over time, per-fact previous values",
      "confidence per fact, and temporal queries (“what was it in March?”)",
      "backend/context/financial.py"),
-    ("Answer fidelity", "engines return ready comparison rows and pre-formatted rupee figures; "
-                        "the grounding check regenerates or annotates unsupported figures",
-     "locked-slot answers: the model writes prose around placeholders it cannot alter, so a wrong "
-     "number becomes structurally impossible",
-     "stress report findings 8-10; verification W04"),
+    ("Answer fidelity", "locked slots: every figure a turn may contain comes from the engines, offered "
+                        "as named placeholders; a number matching no slot earns one rewrite, and the "
+                        "grounding check still runs behind it",
+     "small models copy the values rather than writing the placeholders (harmless, since the slot list "
+     "also acts as the whitelist) — worth revisiting with a stronger model",
+     "backend/answer/slots.py, backend/tests/test_locked_slots.py"),
     ("Prompt size", "one system prompt with all rules, ~6,000 tokens a turn",
      "intent-sliced prompts: send only the sections the intent needs",
      "backend/prompts/tora.py; traces llm.prompt_tokens"),
@@ -278,7 +279,13 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
     lines += table(["category", "facts"],
                    [[k, ", ".join(f"`{n}`" for n in v)] for k, v in data["fact_types"].items()]) + [""]
 
-    lines += ["### Documents", "",
+    lines += ["### Locked figures", "",
+              "A turn that ran an engine carries a slot table: every figure it produced, already formatted, "
+              "offered to the answer model as `{{slot}}` placeholders. Placeholders are substituted after "
+              "generation, and any number in the reply that matches no slot (beyond rounding) earns one rewrite "
+              "naming the offender. Only deterministic tools contribute slots — researched figures stay in the "
+              "external-data block (`backend/answer/slots.py`; `TORA_LOCKED_SLOTS=off` disables it).", "",
+              "### Documents", "",
               "Uploads are parsed deterministically and their figures enter memory only after the user confirms: " +
               ", ".join(f"`{d}`" for d in data["doc_types"]) +
               ". Identifiers (PAN, account numbers, phones, emails) are masked, and a document's text is treated "
@@ -315,16 +322,14 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
                    [[a, have, missing, f"`{ev_}`"] for a, have, missing, ev_ in PARTIAL]) + [""]
 
     lines += ["## Open — in priority order", "",
-              "1. **Locked-slot answers.** The engine emits the numeric skeleton; the model writes prose around "
-              "placeholders and cannot alter a figure. Attacks the failure mode the live run actually measured.",
-              "2. **Intent-sliced prompts.** Fewer competing rules per turn: faster on CPU, less hedging.",
-              "3. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.",
-              "4. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
-              "5. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
-              "6. **Tool retries and circuit breakers.**",
-              "7. **Broader tax coverage.**",
-              "8. **Observability dashboard** over the existing metrics and traces.",
-              "9. **CI wiring** for `backend.check`.", ""]
+              "1. **Intent-sliced prompts.** Fewer competing rules per turn: faster on CPU, less hedging.",
+              "2. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.",
+              "3. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
+              "4. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
+              "5. **Tool retries and circuit breakers.**",
+              "6. **Broader tax coverage.**",
+              "7. **Observability dashboard** over the existing metrics and traces.",
+              "8. **CI wiring** for `backend.check`.", ""]
 
     lines += ["## Known limits", ""]
     lines += table(["limit", "detail"], [[a, b] for a, b in KNOWN_LIMITS]) + [""]

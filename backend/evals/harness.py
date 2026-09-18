@@ -199,6 +199,8 @@ class EvalHarness:
     async def _run_scenario_inner(self, scenario: Dict[str, Any]) -> ScenarioResult:
         identity = Identity(user_id="eval-user", token="eval-token") if scenario.get("signed_in") else None
         token = set_current_identity(identity)
+        previous_slots = os.environ.get("TORA_LOCKED_SLOTS")
+        os.environ["TORA_LOCKED_SLOTS"] = "off" if scenario.get("locked_slots") is False else "on"
         previous_fast = os.environ.get("TORA_FAST_PATH")
         # Production default is on; scenarios that exercise the LLM planner itself opt out.
         os.environ["TORA_FAST_PATH"] = "off" if scenario.get("fast_path") is False else "on"
@@ -206,10 +208,11 @@ class EvalHarness:
             return await self._run_turns(scenario)
         finally:
             reset_current_identity(token)
-            if previous_fast is None:
-                os.environ.pop("TORA_FAST_PATH", None)
-            else:
-                os.environ["TORA_FAST_PATH"] = previous_fast
+            for name, previous in (("TORA_FAST_PATH", previous_fast), ("TORA_LOCKED_SLOTS", previous_slots)):
+                if previous is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = previous
 
     async def _run_turns(self, scenario: Dict[str, Any]) -> ScenarioResult:
         registry = self._registry()
