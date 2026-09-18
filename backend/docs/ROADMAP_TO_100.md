@@ -58,7 +58,7 @@ A Tier 2 turn returns immediately with a handle; the answer streams into the con
 ready, and the UI already has the machinery for a reply arriving late. **Done when** no request
 holds a connection for minutes.
 
-### 5. Tool retries and circuit breakers  *(features)*
+### 5. Tool retries and circuit breakers  *(features)*  — **DONE**
 One flaky call should not lose a turn. **Done when** a tool failing twice is skipped with the answer
 saying so, and a repeatedly failing tool is held open.
 

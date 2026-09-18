@@ -14,7 +14,7 @@ Generated from the code on 2026-09-18 by `python -m backend.status`. Everything 
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1194 |
+| Backend tests | 1215 |
 | Frontend tests | 33 |
 
 ## Built
@@ -124,7 +124,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1194 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1215 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
@@ -132,7 +132,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Configuration
 
-`TORA_ANSWER_BLOCK`, `TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_BLOCK_ANSWER_TOKENS`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_DIRECT_ANSWER`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_PROMPT_SLICING`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
+`TORA_ANSWER_BLOCK`, `TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_BLOCK_ANSWER_TOKENS`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_DIRECT_ANSWER`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_PROMPT_SLICING`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TOOL_BREAKER_FAILURES`, `TORA_TOOL_BREAKER_SECONDS`, `TORA_TOOL_RETRIES`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
 
 ## Partial — built, with a named gap
 
@@ -144,7 +144,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 | What-if | per-engine scenarios (sip_change_impact, what_if_extra, prepay/rent-vs-buy, loan tenure) and hypothetical facts kept out of the profile | a general scenario engine: change several facts at once, re-run every relevant engine, compare baseline vs scenario | `backend/finance/, state kept in FinancialProfile.scenarios` |
 | Research | multi-source search, evidence extraction, credibility, conflict detection, per-topic research records and follow-ups | an autonomous re-research loop when evidence is thin, conflicting or stale | `backend/research/` |
 | Tax | two tax years, both regimes, 8 operations, a 33-rule library with staleness checks | broader coverage (more heads of income, more years, presumptive schemes) | `backend/finance/tax_extras.py, backend/knowledge/rules.json` |
-| Tool runtime | per-call timeouts, call ids, per-tool latency in metrics and traces, planning-time argument checks with a repair loop | retries and circuit breakers for a flaky tool | `backend/tools/executor.py` |
+| Tool runtime | per-call timeouts, call ids, per-tool latency in metrics and traces, planning-time argument checks with a repair loop, one retry for a transient failure, and a per-tool circuit breaker reported by /api/metrics | a failing tool is skipped and named, but nothing routes around it to a second source | `backend/tools/executor.py, backend/tools/resilience.py` |
 | Observability | /api/metrics, /api/traces, an optional JSONL trace file, per-request traces with no personal content | a dashboard over them | `backend/observability/` |
 | Evaluation | python -m backend.check runs unit tests, the offline benchmark and the rules check | CI wiring so it runs on every push | `backend/check.py` |
 | Manual QA | a 149-test runbook covering every phase, including the streaming UI (V1-V11) | one full hands-on pass in a real browser, desktop and mobile | `backend/docs/manual_test_plan.md` |
@@ -154,7 +154,6 @@ The chat page renders them live: working panel with per-step ticks and engine su
 1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.
 2. **General scenario engine.** Change several facts at once and re-run every relevant engine.
 3. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
-4. **Tool retries and circuit breakers.**
 5. **Broader tax coverage.**
 6. **Observability dashboard** over the existing metrics and traces.
 7. **CI wiring** for `backend.check`.

@@ -60,9 +60,10 @@ PARTIAL: List[Tuple[str, str, str, str]] = [
      "broader coverage (more heads of income, more years, presumptive schemes)",
      "backend/finance/tax_extras.py, backend/knowledge/rules.json"),
     ("Tool runtime", "per-call timeouts, call ids, per-tool latency in metrics and traces, "
-                     "planning-time argument checks with a repair loop",
-     "retries and circuit breakers for a flaky tool",
-     "backend/tools/executor.py"),
+                     "planning-time argument checks with a repair loop, one retry for a transient "
+                     "failure, and a per-tool circuit breaker reported by /api/metrics",
+     "a failing tool is skipped and named, but nothing routes around it to a second source",
+     "backend/tools/executor.py, backend/tools/resilience.py"),
     ("Observability", "/api/metrics, /api/traces, an optional JSONL trace file, per-request traces "
                       "with no personal content",
      "a dashboard over them",
@@ -349,8 +350,7 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
               "1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.",
               "2. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
               "3. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
-              "4. **Tool retries and circuit breakers.**",
-              "5. **Broader tax coverage.**",
+                            "5. **Broader tax coverage.**",
               "6. **Observability dashboard** over the existing metrics and traces.",
               "7. **CI wiring** for `backend.check`.", ""]
 

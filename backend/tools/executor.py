@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any
 from .base import ToolResult
 from .registry import ToolRegistry
 from ..context.tools import ToolContext
+from .resilience import CircuitBreaker, is_transient, retries
 
 
 class ToolExecutor:
@@ -28,6 +29,9 @@ class ToolExecutor:
             raise TypeError(f"Expected ToolRegistry instance, got {type(registry).__name__}")
         self.registry = registry
         self.default_timeout_seconds = default_timeout_seconds
+        # Shared across calls for the life of the process: a tool that is down stays known to be
+        # down, so the next turn does not pay its timeout again.
+        self.breaker = CircuitBreaker()
 
     async def execute(
         self,
@@ -36,8 +40,52 @@ class ToolExecutor:
         call_id: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
     ) -> ToolResult:
+        """Run a tool, retrying a transient failure once and refusing a tool that keeps failing.
+
+        A timeout or a refused connection gets another attempt; bad arguments or an unknown
+        operation do not, because the second attempt has the same answer waiting. A tool that has
+        failed repeatedly is skipped outright until its cooldown passes — on a box where a turn
+        costs minutes, paying a dead source's timeout every turn is the expensive mistake.
         """
-        Execute a selected tool by name with arguments, timeout protection, and error containment.
+        clean_name = tool_name.strip() if isinstance(tool_name, str) else str(tool_name)
+        if self.breaker.is_open(clean_name):
+            wait = int(self.breaker.seconds_remaining(clean_name))
+            return ToolResult(
+                tool_name=clean_name,
+                success=False,
+                error=(f"'{clean_name}' has failed repeatedly and is being skipped for another "
+                       f"{wait}s. Answer without it and say the source was unavailable."),
+                call_id=call_id,
+                metadata={"circuit_open": True, "retry_after_seconds": wait},
+            )
+
+        attempts = retries() + 1
+        result = await self._attempt(clean_name, arguments, call_id, timeout_seconds)
+        tried = 1
+        while not result.success and tried < attempts and is_transient(result.error):
+            result = await self._attempt(clean_name, arguments, call_id, timeout_seconds)
+            tried += 1
+
+        if result.success:
+            self.breaker.record_success(clean_name)
+        else:
+            self.breaker.record_failure(clean_name)
+        if tried > 1:
+            meta = dict(result.metadata or {})
+            meta["attempts"] = tried
+            result = ToolResult(tool_name=result.tool_name, success=result.success, data=result.data,
+                                error=result.error, call_id=result.call_id, metadata=meta)
+        return result
+
+    async def _attempt(
+        self,
+        tool_name: str,
+        arguments: Optional[Dict[str, Any]] = None,
+        call_id: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> ToolResult:
+        """
+        One attempt: name validation, argument validation, timeout protection, error containment.
 
         :param tool_name: Name of the tool registered in ToolRegistry.
         :param arguments: Dictionary of input parameters for the tool.

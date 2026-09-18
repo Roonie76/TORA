@@ -554,7 +554,12 @@ async def _run_stateful_turn(request: ChatRequest, prompt: str, identity: Option
 @app.get("/api/metrics")
 async def metrics():
     """Aggregate, content-free TORA metrics since process start."""
-    return telemetry.snapshot()
+    data = dict(telemetry.snapshot())
+    # A tool failing repeatedly is otherwise invisible: the answers just get quietly worse.
+    failing = tool_executor.breaker.snapshot()
+    if failing:
+        data["failing_tools"] = failing
+    return data
 
 
 @app.get("/api/traces")
