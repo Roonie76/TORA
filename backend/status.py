@@ -347,12 +347,16 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
                    [[a, have, missing, f"`{ev_}`"] for a, have, missing, ev_ in PARTIAL]) + [""]
 
     lines += ["## Open — in priority order", "",
-              "1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.",
-              "2. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
-              "3. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
-                            "5. **Broader tax coverage.**",
-              "6. **Observability dashboard** over the existing metrics and traces.",
-              "7. **CI wiring** for `backend.check`.", ""]
+              "The full plan, with what each item is worth, is in `backend/docs/ROADMAP_TO_100.md`.", "",
+              "1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand. Never completed.",
+              "2. **Tier 0 for tax.** An unambiguous tax question still needs the model, because the answer "
+              "must carry its legal basis and the engine summary does not (eval `rules-tax-basis`).",
+              "3. **Answer cache.** The same question against unchanged facts has the same answer.",
+              "4. **Non-blocking long turns.** A minutes-long turn should not hold a connection.",
+              "5. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
+              "6. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
+              "7. **Broader tax coverage.**",
+              "8. **Observability dashboard** over the existing metrics and traces.", ""]
 
     lines += ["## Known limits", ""]
     lines += table(["limit", "detail"], [[a, b] for a, b in KNOWN_LIMITS]) + [""]
