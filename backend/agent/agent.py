@@ -11,11 +11,12 @@ from ..llm.base import (
     LLMResponseError,
     LLMProviderError,
 )
-from ..prompts.tora import TORA_SYSTEM_PROMPT, slice_prompt
+from ..prompts.tora import TORA_SYSTEM_PROMPT, sections_for as prompt_sections_for, slice_prompt
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
 from ..answer import slots as answer_slots
 from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan, profile_plan
+from ..planner.tool_filter import needs_no_tools
 from ..tools.executor import ToolExecutor
 from ..state.intent import Intent, IntentClassifier, IntentResult
 from ..state.conversation_state import ConversationState
@@ -294,6 +295,7 @@ class ToraAgent:
         summary: Optional[str] = None,
         conversation_state: Optional[ConversationState] = None,
         current_turn: Optional[int] = None,
+        turn_notes: Optional[str] = None,
     ) -> List[Dict[str, str]]:
         """Construct the complete LLM message payload using the ContextBuilder."""
         return self.context_builder.build(
@@ -304,6 +306,7 @@ class ToraAgent:
             knowledge_context=knowledge_context,
             tool_context=tool_context,
             system_prompt=system_prompt,
+            turn_notes=turn_notes,
             summary=summary,
             conversation_state=conversation_state,
             current_turn=current_turn,
@@ -400,6 +403,16 @@ class ToraAgent:
         if not skip_planner and _is_small_talk(message, intent):
             skip_planner = True
 
+        # A turn that only reads back or records what TORA already knows needs no engine, and a
+        # planner call costs ~95s of prompt reading on CPU. 19 of 35 live planner calls returned
+        # "no tools needed" before this gate existed.
+        if not skip_planner and needs_no_tools(
+            message, intent, has_documents=bool(conversation_state is not None and conversation_state.documents)
+        ):
+            skip_planner = True
+            if trace is not None:
+                trace.planner["skipped_no_tools"] = True
+
         # Phase 7: clear-cut requests get a direct plan; effort scales with the case.
         fast: Optional[ToolPlan] = None
         if (
@@ -470,6 +483,7 @@ class ToraAgent:
             executed_plan = await self._planner.plan(
                 message=planner_message,
                 context=context,
+                intent=intent,
                 model=effort_model,
                 known_facts=known_facts,
             )
@@ -540,9 +554,11 @@ class ToraAgent:
             if isinstance(result.output, dict) and result.output.get("operation"):
                 operations.append(str(result.output["operation"]))
         if system_prompt is None and _prompt_slicing_enabled():
-            # Only the sections this turn can use: cheaper on CPU, and fewer competing rules
-            # for a small model to hold at once.
-            system_prompt = slice_prompt(
+            # Only the sections this turn can use: cheaper on CPU, and fewer competing rules for a
+            # small model to hold at once. The slice is sticky per conversation — it only grows —
+            # so the prompt stays byte-identical and the model's KV cache survives between turns.
+            sticky = list(conversation_state.prompt_sections) if conversation_state is not None else []
+            needed = prompt_sections_for(
                 intent=intent.intent.value if hasattr(intent.intent, "value") else str(intent.intent),
                 tools_used=tools_used,
                 operations=operations,
@@ -550,13 +566,17 @@ class ToraAgent:
                 has_history=bool((context and context.messages) or (turn or 0) > 1),
                 debt_context=bool(_DEBT_WORDS.search(message or "")),
             )
+            combined = sorted(set(sticky) | set(needed))
+            if conversation_state is not None:
+                conversation_state.prompt_sections = combined
+            system_prompt = slice_prompt(sticky=combined)
             if trace is not None:
-                trace.prompt_sections = len(system_prompt.split("\n## ")) - 1
+                trace.prompt_sections = len(combined)
         account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands, active_profile)
                         + _negative_amount_note(message) + _empty_memory_note(intent, active_profile)
                         + answer_slots.slot_table(locked_slots))
-        if account_note:
-            system_prompt = (system_prompt or self.default_system_prompt) + account_note
+        # account_note is per-turn: it is passed as turn_notes so it lands after the stable
+        # prompt instead of changing it (see ContextBuilder.build on prefix reuse).
         messages = self._build_messages(
             user_message=message,
             context=context,
@@ -565,6 +585,7 @@ class ToraAgent:
             knowledge_context=knowledge_context,
             tool_context=effective_tool_context,
             system_prompt=system_prompt,
+            turn_notes=account_note,
             conversation_state=conversation_state,
             current_turn=turn,
         )

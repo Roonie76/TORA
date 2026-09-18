@@ -8,6 +8,7 @@ from ..tools.registry import ToolRegistry
 from ..tools.base import ToolValidationError
 from ..context.conversation import ConversationContext
 from ..prompts.planner import get_planner_system_prompt
+from .tool_filter import candidate_tools, filter_schemas
 from .models import ToolPlan, ToolPlanStep, MAX_PLAN_STEPS
 
 # Tools whose numeric params the planner often emits as strings ("20 lakh", "8.5%")
@@ -278,6 +279,7 @@ class Planner:
         context: Optional[ConversationContext] = None,
         model: Optional[str] = None,
         known_facts: str = "",
+        intent: Any = None,
     ) -> ToolPlan:
         """
         Generate a validated ToolPlan for the provided user message.
@@ -294,8 +296,14 @@ class Planner:
         if len(self.tool_registry) == 0:
             return ToolPlan(requires_tools=False, steps=[], thought="No tools available in ToolRegistry.")
 
-        # Build dynamic planner prompt with current tool schemas
-        tool_schemas = [t.get_schema() for t in self._usable_tools()]
+        # Build dynamic planner prompt with current tool schemas. Only the plausible tools go in:
+        # every schema costs prompt tokens, and prefill is the slowest part of a turn on CPU
+        # (finance_calc's schema alone is ~930 tokens).
+        usable = self._usable_tools()
+        tool_schemas = [t.get_schema() for t in usable]
+        tool_schemas = filter_schemas(
+            tool_schemas, candidate_tools(message, intent, available={t.name for t in usable})
+        )
         planner_system_prompt = get_planner_system_prompt(tool_schemas, known_facts=known_facts)
 
         messages: List[Dict[str, str]] = [

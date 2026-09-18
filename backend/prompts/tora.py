@@ -2,6 +2,8 @@
 System prompt definition for TORA (Spendsy's AI Assistant).
 """
 
+from typing import List, Optional
+
 TORA_SYSTEM_PROMPT = (
     "You are TORA, the personal AI assistant inside Spendsy.\n\n"
     "## Core Persona & General Capabilities\n"
@@ -209,9 +211,13 @@ def sections_for(
     return [title for title in SECTION_ORDER if title in wanted]
 
 
-def slice_prompt(**kwargs) -> str:
-    """The system prompt with only the sections this turn can use."""
-    wanted = set(sections_for(**kwargs))
+def slice_prompt(sticky: Optional[List[str]] = None, **kwargs) -> str:
+    """The system prompt with only the sections this turn can use.
+
+    `sticky` carries the sections already used in this conversation. The slice only ever grows,
+    which keeps the prompt byte-identical between turns so the model's KV cache still matches.
+    """
+    wanted = set(sections_for(**kwargs)) | set(sticky or [])
     parts = [PREAMBLE]
     for title, body in SECTIONS:
         if title in wanted:

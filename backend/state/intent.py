@@ -106,6 +106,32 @@ _CURRENT_INFO = re.compile(r"\b(?:current|currently|latest|today|now|this (?:wee
 _MEMORY_RECALL = re.compile(r"\b(?:what (?:is|was|were|are) my|my (?:previous|original|old|last|current)|"
                             r"what did i (?:say|tell|mention)|remind me|do you remember|what do you know about me|"
                             r"how much (?:do|did) i (?:earn|make|pay|owe|have)|how much is my|what'?s my)\b", re.IGNORECASE)
+# A bare possessive question — "And my rent?", "my EMI?", "what about my salary" — asks TORA to
+# read a fact back, nothing more. Measured on the live box: classified as financial_qa it cost a
+# 53-second planner call that returned "no tools needed", because the wording carries no verb the
+# other patterns recognise. Kept deliberately narrow: no digits, no request word, one fact word.
+_BARE_FACT_QUESTION = re.compile(
+    r"^\s*(?:(?:and|also|ok(?:ay)?|so|then|but)[\s,]+)*"
+    r"(?:(?:what|how)\s+about\s+|what(?:'s|\s+is|\s+are|\s+was|\s+were)\s+)?"
+    r"my\s+[a-z][\w\s'-]{0,24}\??\s*$",
+    re.IGNORECASE,
+)
+_NOT_A_BARE_RECALL = re.compile(
+    r"\d|\b(?:should|shall|can|could|would|options?|best|better|worth|plan|plans|planning|"
+    r"calculate|compute|compare|pay|save|invest|afford|why|explain)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_bare_recall(text: str) -> bool:
+    """True for a short possessive question about a stored fact and nothing else."""
+    if len(text.split()) > 6 or not _BARE_FACT_QUESTION.match(text):
+        return False
+    if _NOT_A_BARE_RECALL.search(text) or _CURRENT_INFO.search(text):
+        return False
+    return bool(_MEMORY_FACT_WORDS.search(text))
+
+
 _MEMORY_FACT_WORDS = re.compile(r"\b(?:salary|income|earn|rent|savings?|emergency fund|balance|debt|loan|emi|card|"
                                 r"investments?|mutual funds?|gold|goal|expenses?|profile|about me)\b", re.IGNORECASE)
 _PLANNING = re.compile(r"\b(?:plan|budget|roadmap|strategy|allocate|allocation|goals?|retire|retirement|"
@@ -231,6 +257,8 @@ class IntentClassifier:
         elif _ARITHMETIC.search(text) or _CALC_TOPIC_WITH_NUMBER.match(text):
             intent = Intent.CALCULATION
         elif _MEMORY_RECALL.search(text) and _MEMORY_FACT_WORDS.search(text) and not entities:
+            intent = Intent.MEMORY_RECALL
+        elif _is_bare_recall(text) and not entities:
             intent = Intent.MEMORY_RECALL
         elif is_followup and active is not None and active.has_research():
             intent = Intent.RESEARCH_FOLLOWUP

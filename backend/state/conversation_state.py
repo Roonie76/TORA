@@ -128,6 +128,10 @@ class ConversationState:
     last_intent: Optional[str] = None
     last_resolution: Optional[Dict[str, Any]] = None
     documents: List[Dict[str, Any]] = field(default_factory=list)  # Phase 11 parsed uploads (summaries only)
+    # Prompt sections used so far. The slice only grows within a conversation, so the system
+    # prompt stays byte-identical turn to turn and the model's KV cache survives (re-reading a
+    # 6,000-token prompt costs ~150s on CPU; a cache hit costs ~0.3s).
+    prompt_sections: List[str] = field(default_factory=list)
 
     # --------------------------------------------------------------- documents
     MAX_DOCUMENTS = 5
@@ -376,6 +380,7 @@ class ConversationState:
             "last_intent": self.last_intent,
             "last_resolution": self.last_resolution,
             "documents": list(self.documents),
+            "prompt_sections": list(self.prompt_sections),
         }
 
     @classmethod
@@ -390,4 +395,5 @@ class ConversationState:
             last_intent=d.get("last_intent"),
             last_resolution=d.get("last_resolution"),
             documents=list(d.get("documents") or []),
+            prompt_sections=list(d.get("prompt_sections") or []),
         )

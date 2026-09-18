@@ -86,3 +86,42 @@ class TestPromptSlicing(unittest.TestCase):
         positions = [text.index(f"## {t}") for t in found]
         self.assertEqual(positions, sorted(positions))
         self.assertEqual(len(found), len(SECTION_ORDER))      # everything, when everything applies
+
+
+class TestStickySlices(unittest.TestCase):
+    """The slice only grows within a conversation, so the KV cache prefix survives."""
+
+    def test_a_later_turn_extends_the_earlier_prompt(self):
+        from backend.prompts.tora import sections_for, slice_prompt
+
+        turn1_sections = sections_for(intent="general_qa")
+        turn1 = slice_prompt(sticky=turn1_sections)
+        turn2_sections = sections_for(intent="calculation", tools_used=["tax_calc"])
+        turn2 = slice_prompt(sticky=sorted(set(turn1_sections) | set(turn2_sections)))
+
+        self.assertGreater(len(turn2), len(turn1))
+        for section in turn1_sections:
+            self.assertIn(f"## {section}", turn2)      # nothing is dropped between turns
+
+    def test_repeating_a_turn_gives_a_byte_identical_prompt(self):
+        from backend.prompts.tora import sections_for, slice_prompt
+
+        sections = sections_for(intent="planning", tools_used=["finance_calc"], operations=["debt_rescue_plan"])
+        self.assertEqual(slice_prompt(sticky=sections), slice_prompt(sticky=sections))
+
+
+class TestPerTurnNotesGoLast(unittest.TestCase):
+    """Per-turn notes must not sit in the stable part of the prompt."""
+
+    def test_notes_are_appended_after_the_profile(self):
+        from backend.context.builder import ContextBuilder
+        from backend.context.financial import FinancialProfile
+
+        profile = FinancialProfile()
+        profile.set_fact(name="income", value=88000, category="income", period="monthly", turn=1)
+        messages = ContextBuilder(default_system_prompt="STABLE PROMPT").build(
+            current_message="hi", financial_context=profile,
+                                          system_prompt="STABLE PROMPT", turn_notes="## Note\n- volatile")
+        system = messages[0]["content"]
+        self.assertTrue(system.startswith("STABLE PROMPT"))
+        self.assertLess(system.index("88,000"), system.index("volatile"))
