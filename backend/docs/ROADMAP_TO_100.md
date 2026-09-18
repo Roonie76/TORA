@@ -48,12 +48,33 @@ is there; this adds the sentence around it. Live: an EMI question now answers in
 question in 2.6 s. Still open: tax, which needs the rules library folded in so the answer keeps
 its legal basis.
 
-### 3. Answer cache  *(performance 70% -> 80%)*
-The same question against unchanged facts has the same answer. Key on (question, profile version,
-engine results); serve the stored answer. **Done when** a repeated question is instant and a changed
-fact correctly misses the cache.
+### 3. Answer cache  — **BUILT, MEASURED, AND REMOVED**
 
-### 4. Non-blocking long turns  *(performance 80% -> 100%)*
+The idea was sound and the implementation worked: key on the user, the question, this turn's
+engine results and the system prompt, so any changed input is a miss rather than a stale hit.
+
+Then the test suite failed in a way that mattered. One test was being served another's answer,
+because the key did not include the conversation history — and a model-written answer depends on
+it ("as I mentioned", "that loan"). Putting history in the key makes the cache correct and, for a
+conversational turn, makes it never hit.
+
+So the question became: which turns could it safely serve? Across the 61 live turns:
+
+| | turns | |
+|---|---|---|
+| no tools at all | 41 | history-dependent, so only safe with history in the key, where it never hits |
+| a deterministic engine result | 16 | already answered by tier 0 in 0.04 s with no model at all |
+| live data | 3 | never cacheable — a rate fetched an hour ago is not a fact |
+
+Every turn it could serve safely is already faster without it, and every turn it would speed up
+is one it cannot serve safely. So it was removed rather than shipped: a staleness bug in a finance
+tool is the exact failure this project keeps working to avoid, and a cache is a machine for
+producing them.
+
+**Do not rebuild this without first showing a class of turn that is slow, repeated, and does not
+depend on conversation history.**
+
+### 4. Non-blocking long turns  *(performance 60% -> 85%)*
 A Tier 2 turn returns immediately with a handle; the answer streams into the conversation when
 ready, and the UI already has the machinery for a reply arriving late. **Done when** no request
 holds a connection for minutes.
