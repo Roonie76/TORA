@@ -44,7 +44,8 @@ PARTIAL: List[Tuple[str, str, str, str]] = [
      "backend/answer/slots.py, backend/tests/test_locked_slots.py"),
     ("Prompt size", "intent-sliced prompts: each turn gets only the sections it can use, cut from the "
                     "one full prompt (small talk 987 tokens against 2,321 unsliced)",
-     "the latency effect is not separable from CPU noise yet; needs repeated timing runs",
+     "measured: prefill 39 tok/s against decode 4.1, KV-cache prefix reuse 150x, and the three-turn "
+     "A/B in backend/docs/latency.md. What is left is answer length, not prompt length",
      "backend/prompts/tora.py:slice_prompt, backend/tests/test_prompts.py"),
     ("What-if", "per-engine scenarios (sip_change_impact, what_if_extra, prepay/rent-vs-buy, "
                 "loan tenure) and hypothetical facts kept out of the profile",
@@ -83,14 +84,20 @@ EXTERNAL = [
 ]
 
 KNOWN_LIMITS: List[Tuple[str, str]] = [
-    ("Latency on CPU", "median turn 140s, first token 97s, slowest 735s on 8 GB CPU-only with one model "
-                       "instance. The fast paths remove a planner call (1-4 min) from the commonest questions."),
+    ("Latency on CPU", "2 cores, 8 GB, one model instance: prefill 39 tok/s, decode 4.1 tok/s, so a written "
+                       "token costs 9.5x a read one. A memory recall is now ~4s end to end; a full debt plan "
+                       "is still minutes, and its cost is the length of the answer. See docs/latency.md."),
     ("Grounding derivations", "the figure check accepts simple derivations of known values, so a wrong "
                               "arithmetic result can still coincide with one. Fewer model-made figures is the fix."),
     ("Small-model hedging", "gemma4:e4b sometimes asks for input it already has (verification W04 asked which "
                             "tax year although the tax engine had answered)."),
+    ("Prompt rules are advisory", "the answer-shape rules cut the debt plan 368 -> 299 words, but the model "
+                                  "still opened with two sentences it had just been told not to write. "
+                                  "Anything that must hold is rendered in code, not asked for."),
     ("Model memory pressure", "one live turn was killed by the OS; the stream reported it and the UI offered "
-                              "Try again, which is the intended behaviour."),
+                              "Try again, which is the intended behaviour. backend/ops/slim_gguf.py cuts the "
+                              "model 9.6 GB -> 6.0 GB with byte-identical answers, which removes the pressure "
+                              "without changing speed."),
 ]
 
 

@@ -14,7 +14,7 @@ Generated from the code on 2026-09-18 by `python -m backend.status`. Everything 
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1109 |
+| Backend tests | 1149 |
 | Frontend tests | 33 |
 
 ## Built
@@ -124,7 +124,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1109 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1149 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
@@ -140,7 +140,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 |---|---|---|---|
 | Memory | current / historical / hypothetical / retracted states, revision chains, corrections kept apart from changes over time, per-fact previous values | confidence per fact, and temporal queries (“what was it in March?”) | `backend/context/financial.py` |
 | Answer fidelity | locked slots: every figure a turn may contain comes from the engines, offered as named placeholders; a number matching no slot earns one rewrite, and the grounding check still runs behind it | small models copy the values rather than writing the placeholders (harmless, since the slot list also acts as the whitelist) — worth revisiting with a stronger model | `backend/answer/slots.py, backend/tests/test_locked_slots.py` |
-| Prompt size | intent-sliced prompts: each turn gets only the sections it can use, cut from the one full prompt (small talk 987 tokens against 2,321 unsliced) | the latency effect is not separable from CPU noise yet; needs repeated timing runs | `backend/prompts/tora.py:slice_prompt, backend/tests/test_prompts.py` |
+| Prompt size | intent-sliced prompts: each turn gets only the sections it can use, cut from the one full prompt (small talk 987 tokens against 2,321 unsliced) | measured: prefill 39 tok/s against decode 4.1, KV-cache prefix reuse 150x, and the three-turn A/B in backend/docs/latency.md. What is left is answer length, not prompt length | `backend/prompts/tora.py:slice_prompt, backend/tests/test_prompts.py` |
 | What-if | per-engine scenarios (sip_change_impact, what_if_extra, prepay/rent-vs-buy, loan tenure) and hypothetical facts kept out of the profile | a general scenario engine: change several facts at once, re-run every relevant engine, compare baseline vs scenario | `backend/finance/, state kept in FinancialProfile.scenarios` |
 | Research | multi-source search, evidence extraction, credibility, conflict detection, per-topic research records and follow-ups | an autonomous re-research loop when evidence is thin, conflicting or stale | `backend/research/` |
 | Tax | two tax years, both regimes, 8 operations, a 33-rule library with staleness checks | broader coverage (more heads of income, more years, presumptive schemes) | `backend/finance/tax_extras.py, backend/knowledge/rules.json` |
@@ -163,10 +163,11 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 | limit | detail |
 |---|---|
-| Latency on CPU | median turn 140s, first token 97s, slowest 735s on 8 GB CPU-only with one model instance. The fast paths remove a planner call (1-4 min) from the commonest questions. |
+| Latency on CPU | 2 cores, 8 GB, one model instance: prefill 39 tok/s, decode 4.1 tok/s, so a written token costs 9.5x a read one. A memory recall is now ~4s end to end; a full debt plan is still minutes, and its cost is the length of the answer. See docs/latency.md. |
 | Grounding derivations | the figure check accepts simple derivations of known values, so a wrong arithmetic result can still coincide with one. Fewer model-made figures is the fix. |
 | Small-model hedging | gemma4:e4b sometimes asks for input it already has (verification W04 asked which tax year although the tax engine had answered). |
-| Model memory pressure | one live turn was killed by the OS; the stream reported it and the UI offered Try again, which is the intended behaviour. |
+| Prompt rules are advisory | the answer-shape rules cut the debt plan 368 -> 299 words, but the model still opened with two sentences it had just been told not to write. Anything that must hold is rendered in code, not asked for. |
+| Model memory pressure | one live turn was killed by the OS; the stream reported it and the UI offered Try again, which is the intended behaviour. backend/ops/slim_gguf.py cuts the model 9.6 GB -> 6.0 GB with byte-identical answers, which removes the pressure without changing speed. |
 
 ---
 
