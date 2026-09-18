@@ -134,3 +134,86 @@ TORA_SYSTEM_PROMPT = (
 def get_tora_system_prompt() -> str:
     """Return the default system prompt for TORA."""
     return TORA_SYSTEM_PROMPT
+
+
+# --- Intent slicing (Phase 15) -------------------------------------------------
+# The whole prompt is ~6,000 tokens and every turn paid for it. A small model also
+# obeys fewer rules better than many: sending only the sections a turn can use is
+# both faster on CPU and less confusing. The full prompt above stays the source of
+# truth — slices are cut from it, never written separately.
+
+def _split_sections(prompt: str):
+    """(preamble, ordered [(title, body)]) — the '## ' headings of the full prompt."""
+    head, _, rest = prompt.partition("\n## ")
+    sections = []
+    for chunk in ("## " + rest).split("\n## "):
+        chunk = chunk.lstrip("# ").rstrip()
+        title, _, body = chunk.partition("\n")
+        sections.append((title.strip(), body))
+    return head.rstrip(), sections
+
+
+PREAMBLE, SECTIONS = _split_sections(TORA_SYSTEM_PROMPT)
+SECTION_ORDER = [title for title, _ in SECTIONS]
+
+# Always sent: who TORA is, what it may trust, how it must handle figures and itself.
+ALWAYS = (
+    "Core Persona & General Capabilities",
+    "Specialization: Personal Finance & Taxation",
+    "Context Discipline (Crucial)",
+    "Accuracy & Financial Integrity",
+    "Structured Financial Memory & Profile Grounding",
+    "Talking About Memory",
+    "Money Format",
+    "Length",
+    "System Confidentiality & Anti-Extraction (Strict)",
+)
+
+# Sent when the turn can actually use them.
+WHEN_TOOLS = ("Calculations & Answer Structure", "Comparing Options")
+WHEN_TOOL = {
+    "spendsy_data": ("Spendsy Records",),
+    "tax_calc": ("Tax Years", "Citing the Law"),
+    "rules_lookup": ("Citing the Law",),
+}
+WHEN_DEBT = ("People Under Debt Stress",)
+WHEN_DOCUMENTS = ("Uploaded Documents",)
+WHEN_HISTORY = ("Conversation State & Follow-ups",)
+DEBT_OPERATIONS = ("debt_", "consolidation_check", "minimum_due_trap", "financial_health_check")
+
+
+def sections_for(
+    intent: str = "",
+    tools_used=(),
+    operations=(),
+    has_documents: bool = False,
+    has_history: bool = False,
+    debt_context: bool = False,
+):
+    """Which sections this turn needs, in the prompt's own order."""
+    wanted = set(ALWAYS)
+    tools_used = tuple(tools_used or ())
+    operations = tuple(operations or ())
+    if tools_used:
+        wanted.update(WHEN_TOOLS)
+    for tool in tools_used:
+        wanted.update(WHEN_TOOL.get(tool, ()))
+    if intent in ("calculation", "planning", "what_if", "financial_qa", "comparison"):
+        wanted.update(WHEN_TOOLS)
+    if has_documents:
+        wanted.update(WHEN_DOCUMENTS)
+    if has_history or intent in ("research_followup", "clarification", "memory_recall"):
+        wanted.update(WHEN_HISTORY)
+    if debt_context or any(op.startswith(DEBT_OPERATIONS) for op in operations if isinstance(op, str)):
+        wanted.update(WHEN_DEBT)
+    return [title for title in SECTION_ORDER if title in wanted]
+
+
+def slice_prompt(**kwargs) -> str:
+    """The system prompt with only the sections this turn can use."""
+    wanted = set(sections_for(**kwargs))
+    parts = [PREAMBLE]
+    for title, body in SECTIONS:
+        if title in wanted:
+            parts.append(f"## {title}\n{body}".rstrip())
+    return "\n\n".join(parts) + "\n"

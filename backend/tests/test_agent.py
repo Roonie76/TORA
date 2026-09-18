@@ -47,7 +47,13 @@ class TestToraAgent(unittest.IsolatedAsyncioTestCase):
         messages = call_kwargs["messages"]
         self.assertEqual(len(messages), 2)
         self.assertEqual(messages[0]["role"], "system")
-        self.assertEqual(messages[0]["content"], TORA_SYSTEM_PROMPT)
+        # Prompt slicing (Phase 15): the turn gets the sections it can use, always including
+        # who TORA is, the trust rules and the confidentiality rules.
+        self.assertTrue(messages[0]["content"].startswith("You are TORA"))
+        for section in ("## Core Persona", "## Context Discipline", "## Accuracy & Financial Integrity",
+                        "## System Confidentiality"):
+            self.assertIn(section, messages[0]["content"])
+        self.assertLessEqual(len(messages[0]["content"]), len(TORA_SYSTEM_PROMPT))
         self.assertEqual(messages[1]["role"], "user")
         self.assertEqual(messages[1]["content"], "Hello agent")
 
@@ -75,7 +81,13 @@ class TestToraAgent(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(messages), 4)
         self.assertEqual(messages[0]["role"], "system")
-        self.assertEqual(messages[0]["content"], TORA_SYSTEM_PROMPT)
+        # Prompt slicing (Phase 15): the turn gets the sections it can use, always including
+        # who TORA is, the trust rules and the confidentiality rules.
+        self.assertTrue(messages[0]["content"].startswith("You are TORA"))
+        for section in ("## Core Persona", "## Context Discipline", "## Accuracy & Financial Integrity",
+                        "## System Confidentiality"):
+            self.assertIn(section, messages[0]["content"])
+        self.assertLessEqual(len(messages[0]["content"]), len(TORA_SYSTEM_PROMPT))
         self.assertEqual(messages[1]["role"], "user")
         self.assertEqual(messages[1]["content"], "I earn ₹60,000 per month.")
         self.assertEqual(messages[2]["role"], "assistant")

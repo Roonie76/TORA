@@ -11,7 +11,7 @@ from ..llm.base import (
     LLMResponseError,
     LLMProviderError,
 )
-from ..prompts.tora import TORA_SYSTEM_PROMPT
+from ..prompts.tora import TORA_SYSTEM_PROMPT, slice_prompt
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
 from ..answer import slots as answer_slots
@@ -179,6 +179,15 @@ def _is_small_talk(message: str, intent: Any) -> bool:
 
 def _complex_think() -> bool:
     return os.getenv("TORA_COMPLEX_THINK", "off").strip().lower() in ("1", "on", "true", "yes")
+
+
+_DEBT_WORDS = re.compile(r"\b(?:debt|debts|loan|loans|emi|card|cards|overdue|default|collection|recovery|"
+                         r"minimum\s+due|interest|repay\w*|borrow\w*)\b", re.IGNORECASE)
+
+
+def _prompt_slicing_enabled() -> bool:
+    """Phase 15: send only the prompt sections a turn can use (TORA_PROMPT_SLICING=off to disable)."""
+    return os.getenv("TORA_PROMPT_SLICING", "on").strip().lower() not in ("0", "off", "false", "no")
 
 
 def _locked_slots_enabled() -> bool:
@@ -524,6 +533,25 @@ class ToraAgent:
         locked_slots: Dict[str, str] = {}
         if _locked_slots_enabled():
             locked_slots = answer_slots.build_slots(effective_tool_context)
+
+        tools_used, operations = [], []
+        for result in (effective_tool_context.results if effective_tool_context else []):
+            tools_used.append(result.tool_name)
+            if isinstance(result.output, dict) and result.output.get("operation"):
+                operations.append(str(result.output["operation"]))
+        if system_prompt is None and _prompt_slicing_enabled():
+            # Only the sections this turn can use: cheaper on CPU, and fewer competing rules
+            # for a small model to hold at once.
+            system_prompt = slice_prompt(
+                intent=intent.intent.value if hasattr(intent.intent, "value") else str(intent.intent),
+                tools_used=tools_used,
+                operations=operations,
+                has_documents=bool(conversation_state is not None and conversation_state.documents),
+                has_history=bool((context and context.messages) or (turn or 0) > 1),
+                debt_context=bool(_DEBT_WORDS.search(message or "")),
+            )
+            if trace is not None:
+                trace.prompt_sections = len(system_prompt.split("\n## ")) - 1
         account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands, active_profile)
                         + _negative_amount_note(message) + _empty_memory_note(intent, active_profile)
                         + answer_slots.slot_table(locked_slots))

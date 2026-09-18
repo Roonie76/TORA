@@ -53,6 +53,7 @@ class TurnTrace:
     overflow_retry: bool = False
     grounding: Optional[Dict[str, Any]] = None
     slots: Optional[Dict[str, Any]] = None      # locked figures: offered / used / stray / action
+    prompt_sections: Optional[int] = None       # system-prompt sections sent this turn
     status: str = "in_progress"
     http_status: Optional[int] = None
     error_type: Optional[str] = None

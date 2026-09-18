@@ -42,9 +42,10 @@ PARTIAL: List[Tuple[str, str, str, str]] = [
      "small models copy the values rather than writing the placeholders (harmless, since the slot list "
      "also acts as the whitelist) — worth revisiting with a stronger model",
      "backend/answer/slots.py, backend/tests/test_locked_slots.py"),
-    ("Prompt size", "one system prompt with all rules, ~6,000 tokens a turn",
-     "intent-sliced prompts: send only the sections the intent needs",
-     "backend/prompts/tora.py; traces llm.prompt_tokens"),
+    ("Prompt size", "intent-sliced prompts: each turn gets only the sections it can use, cut from the "
+                    "one full prompt (small talk 987 tokens against 2,321 unsliced)",
+     "the latency effect is not separable from CPU noise yet; needs repeated timing runs",
+     "backend/prompts/tora.py:slice_prompt, backend/tests/test_prompts.py"),
     ("What-if", "per-engine scenarios (sip_change_impact, what_if_extra, prepay/rent-vs-buy, "
                 "loan tenure) and hypothetical facts kept out of the profile",
      "a general scenario engine: change several facts at once, re-run every relevant engine, "
@@ -279,7 +280,12 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
     lines += table(["category", "facts"],
                    [[k, ", ".join(f"`{n}`" for n in v)] for k, v in data["fact_types"].items()]) + [""]
 
-    lines += ["### Locked figures", "",
+    lines += ["### Prompt assembly", "",
+              "The system prompt is one document; each turn is sent only the sections it can use — the engine "
+              "sections when a tool ran, the rules citation section when the rules library answered, the "
+              "debt-stress section when the case is about debt. Small talk goes out at 987 tokens against 2,321 "
+              "for the whole prompt (`backend/prompts/tora.py`; `TORA_PROMPT_SLICING=off` disables it).", "",
+              "### Locked figures", "",
               "A turn that ran an engine carries a slot table: every figure it produced, already formatted, "
               "offered to the answer model as `{{slot}}` placeholders. Placeholders are substituted after "
               "generation, and any number in the reply that matches no slot (beyond rounding) earns one rewrite "
@@ -322,14 +328,13 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
                    [[a, have, missing, f"`{ev_}`"] for a, have, missing, ev_ in PARTIAL]) + [""]
 
     lines += ["## Open — in priority order", "",
-              "1. **Intent-sliced prompts.** Fewer competing rules per turn: faster on CPU, less hedging.",
-              "2. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.",
-              "3. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
-              "4. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
-              "5. **Tool retries and circuit breakers.**",
-              "6. **Broader tax coverage.**",
-              "7. **Observability dashboard** over the existing metrics and traces.",
-              "8. **CI wiring** for `backend.check`.", ""]
+              "1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand.",
+              "2. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
+              "3. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
+              "4. **Tool retries and circuit breakers.**",
+              "5. **Broader tax coverage.**",
+              "6. **Observability dashboard** over the existing metrics and traces.",
+              "7. **CI wiring** for `backend.check`.", ""]
 
     lines += ["## Known limits", ""]
     lines += table(["limit", "detail"], [[a, b] for a, b in KNOWN_LIMITS]) + [""]
