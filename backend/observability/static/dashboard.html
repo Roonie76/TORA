@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TORA operations</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#15171a; --muted:#666e78; --line:#e3e6ea;
+    --good:#1c7a4a; --warn:#9a6700; --bad:#a32b2b; --accent:#2b5fa3;
+  }
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+    --bg:#101215; --card:#181b1f; --ink:#e8eaed; --muted:#9aa2ab; --line:#2a2f35;
+    --good:#4cc38a; --warn:#d6a43a; --bad:#e06a6a; --accent:#7aa7e0;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px 16px 56px;background:var(--bg);color:var(--ink);
+       font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1040px;margin:0 auto}
+  h1{font-size:20px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  .v{font-size:26px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
+  .v small{font-size:13px;font-weight:400;color:var(--muted)}
+  .good{color:var(--good)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+  section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  section h2{font-size:14px;margin:0 0 12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+  th{color:var(--muted);font-weight:500;font-size:12px}
+  td.n,th.n{text-align:right}
+  .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;min-width:60px}
+  .bar>i{display:block;height:100%;background:var(--accent)}
+  .pill{display:inline-block;padding:1px 7px;border-radius:999px;font-size:12px;border:1px solid var(--line)}
+  .empty{color:var(--muted);font-size:14px;padding:6px 0}
+  footer{color:var(--muted);font-size:12px;text-align:center;margin-top:24px}
+  @media (max-width:520px){ body{padding:16px} .v{font-size:22px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TORA operations</h1>
+  <div class="sub" id="since">loading…</div>
+
+  <div class="grid" id="tiles"></div>
+
+  <section>
+    <h2>Where the time goes</h2>
+    <table id="latency"></table>
+  </section>
+
+  <section>
+    <h2>Engines</h2>
+    <table id="tools"></table>
+  </section>
+
+  <section>
+    <h2>Recent turns</h2>
+    <table id="turns"></table>
+  </section>
+
+  <footer>Metadata only — no question text, no figures, nothing about any user. Refreshes every 10s.</footer>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const n = (v) => v === null || v === undefined ? "—" : (typeof v === "number" ? v.toLocaleString() : v);
+// The backend writes microseconds ("…:21.860275+00:00"); Date() does not always take them.
+const when = (iso) => {
+  if (!iso) return "start-up";
+  const d = new Date(String(iso).replace(/(\.\d{3})\d+/, "$1"));
+  return isNaN(d) ? String(iso).replace("T", " ").replace(/\..*$/, "") : d.toLocaleString();
+};
+const secs = (ms) => ms === null || ms === undefined ? "—" : (ms >= 10000 ? (ms/1000).toFixed(0)+"s" : ms >= 1000 ? (ms/1000).toFixed(1)+"s" : Math.round(ms)+"ms");
+
+function tile(k, v, cls, note){
+  return `<div class="card"><div class="k">${k}</div><div class="v ${cls||""}">${v}${note?` <small>${note}</small>`:""}</div></div>`;
+}
+
+function rows(el, head, body){
+  el.innerHTML = `<tr>${head.map(h => `<th class="${h.n?"n":""}">${h.t}</th>`).join("")}</tr>` +
+    (body.length ? body.join("") : `<tr><td colspan="${head.length}" class="empty">nothing recorded yet</td></tr>`);
+}
+
+async function load(){
+  let m, t = {traces: []};
+  try { m = await (await fetch("/api/metrics")).json(); } catch { $("since").textContent = "cannot reach the backend"; return; }
+  try { t = await (await fetch("/api/traces?limit=25")).json(); } catch {}
+
+  const total = m.requests?.total || 0;
+  const noModel = m.no_model_turns || 0;
+  const rate = m.success_rate === null || m.success_rate === undefined ? null : Math.round(m.success_rate * 100);
+  const started = when(m.since);
+  $("since").textContent = `since ${started} · ${n(total)} turns`;
+
+  $("tiles").innerHTML = [
+    tile("Turns", n(total)),
+    tile("Answered with no model", n(noModel), noModel ? "good" : "", total ? `${Math.round(noModel/total*100)}%` : ""),
+    tile("Median turn", secs(m.latency_ms?.p50)),
+    tile("Slowest 5%", secs(m.latency_ms?.p95)),
+    tile("Success", rate === null ? "—" : rate + "%", rate === null ? "" : rate >= 99 ? "good" : rate >= 95 ? "warn" : "bad"),
+    tile("Model calls", n(m.llm?.calls)),
+  ].join("");
+
+  const lat = [
+    ["Planner skipped", m.planner_skipped, total],
+    ["Fast path used", m.fast_path, total],
+    ["Answered with no model at all", noModel, total],
+  ].map(([k, v, d]) => `<tr><td>${k}</td><td class="n">${n(v)}</td>
+      <td style="width:38%"><div class="bar"><i style="width:${d ? Math.round((v||0)/d*100) : 0}%"></i></div></td>
+      <td class="n">${d ? Math.round((v||0)/d*100) : 0}%</td></tr>`);
+  rows($("latency"), [{t:"Step"},{t:"Turns",n:1},{t:""},{t:"",n:1}], lat);
+
+  const failing = m.failing_tools || {};
+  const tools = Object.entries(m.tools || {}).map(([name, s]) => {
+    const bad = failing[name];
+    return `<tr><td>${name} ${bad ? `<span class="pill bad">${bad.open ? "held open" : bad.consecutive_failures + " failing"}</span>` : ""}</td>
+      <td class="n">${n(s.ok)}</td><td class="n ${s.error ? "bad" : ""}">${n(s.error)}</td>
+      <td class="n">${secs(s.p50_ms)}</td><td class="n">${secs(s.p95_ms)}</td></tr>`;
+  });
+  rows($("tools"), [{t:"Engine"},{t:"OK",n:1},{t:"Errors",n:1},{t:"Median",n:1},{t:"p95",n:1}], tools);
+
+  const turns = (t.traces || []).slice().reverse().map(tr => {
+    const calls = tr.llm?.calls ?? 0;
+    // "engine only" must mean no model ran at all. A tier-0 answer that still needed a planner
+    // call is not that, and saying so on a 221s turn would make the whole page untrustworthy.
+    const how = calls === 0 ? `<span class="pill good">engine only</span>`
+              : tr.direct_answer ? `<span class="pill good">engine answer</span> + ${calls} planner call${calls === 1 ? "" : "s"}`
+              : `${calls} model call${calls === 1 ? "" : "s"}`;
+    return `<tr><td>${tr.intent || "—"}</td><td>${how}</td>
+      <td>${(tr.tools || []).map(x => x.name).join(", ") || "—"}</td>
+      <td class="n">${n(tr.llm?.prompt_tokens)}</td>
+      <td class="n">${secs(tr.total_ms)}</td>
+      <td class="${tr.status === "ok" ? "" : "bad"}">${tr.status || "—"}</td></tr>`;
+  });
+  rows($("turns"), [{t:"Intent"},{t:"How it was answered"},{t:"Engines"},{t:"Prompt tokens",n:1},{t:"Time",n:1},{t:"Status"}], turns);
+}
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

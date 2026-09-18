@@ -83,9 +83,11 @@ holds a connection for minutes.
 One flaky call should not lose a turn. **Done when** a tool failing twice is skipped with the answer
 saying so, and a repeatedly failing tool is held open.
 
-### 6. Observability dashboard  *(ops 50% -> 70%)*
-A single page over the metrics and traces that already exist. **Done when** turn latency, tool
-mix, grounding rate and error rate are visible without reading JSON.
+### 6. Observability dashboard  *(ops 50% -> 70%)*  — **DONE**
+A single page over the metrics and traces that already exist. Served at `/api/dashboard` behind `TORA_DEBUG_ENDPOINTS`: turns, how many needed no model,
+median and p95 latency, per-engine timings and failures, and the last 25 turns. Metadata
+only, self-contained, light and dark. What is left is alerting — something has to shout
+when a tool breaks, rather than waiting for someone to look.
 
 ### 7. The manual browser pass  *(ops 70% -> 100%)*
 149 tests, desktop and mobile, by hand. Cannot be automated away and has never been completed.

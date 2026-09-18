@@ -9,12 +9,12 @@ Generated from the code on 2026-09-18 by `python -m backend.status`. Everything 
 | Tools registered | 8 |
 | Finance engine operations | 23 |
 | Tax operations | 8 |
-| HTTP endpoints | 20 |
+| HTTP endpoints | 21 |
 | Intents | 12 |
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1215 |
+| Backend tests | 1224 |
 | Frontend tests | 33 |
 
 ## Built
@@ -55,6 +55,7 @@ Backed by a rules library of 33 verified rules (`python -m backend.knowledge che
 | POST | `/chat` | Traced entry point (metadata-only traces; see backend/observability). |
 | POST | `/api/chat/stream` | Same as /api/chat, streamed as Server-Sent Events: |
 | GET | `/api/metrics` | Aggregate, content-free TORA metrics since process start. |
+| GET | `/api/dashboard` | A single page over the metrics and traces that already exist. |
 | GET | `/api/traces` | Recent per-turn traces (metadata only) |
 | GET | `/api/me` | Who TORA thinks is calling, and whether account features are on. |
 | GET | `/api/conversations` | The signed-in user's conversations, newest first. |
@@ -124,7 +125,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1215 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1224 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
@@ -145,7 +146,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 | Research | multi-source search, evidence extraction, credibility, conflict detection, per-topic research records and follow-ups | an autonomous re-research loop when evidence is thin, conflicting or stale | `backend/research/` |
 | Tax | two tax years, both regimes, 8 operations, a 33-rule library with staleness checks | broader coverage (more heads of income, more years, presumptive schemes) | `backend/finance/tax_extras.py, backend/knowledge/rules.json` |
 | Tool runtime | per-call timeouts, call ids, per-tool latency in metrics and traces, planning-time argument checks with a repair loop, one retry for a transient failure, and a per-tool circuit breaker reported by /api/metrics | a failing tool is skipped and named, but nothing routes around it to a second source | `backend/tools/executor.py, backend/tools/resilience.py` |
-| Observability | /api/metrics, /api/traces, an optional JSONL trace file, per-request traces with no personal content | a dashboard over them | `backend/observability/` |
+| Observability | /api/metrics, /api/traces, an optional JSONL trace file, per-request traces with no personal content, and /api/dashboard — one page over them, metadata only | no alerting: someone has to look at the page | `backend/observability/` |
 | Evaluation | python -m backend.check runs unit tests, the offline benchmark and the rules check | CI wiring so it runs on every push | `backend/check.py` |
 | Manual QA | a 149-test runbook covering every phase, including the streaming UI (V1-V11) | one full hands-on pass in a real browser, desktop and mobile | `backend/docs/manual_test_plan.md` |
 
@@ -160,7 +161,7 @@ The full plan, with what each item is worth, is in `backend/docs/ROADMAP_TO_100.
 5. **General scenario engine.** Change several facts at once and re-run every relevant engine.
 6. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
 7. **Broader tax coverage.**
-8. **Observability dashboard** over the existing metrics and traces.
+8. **Alerting** on the metrics the dashboard now shows — nothing shouts when a tool breaks.
 
 ## Known limits
 

@@ -65,8 +65,8 @@ PARTIAL: List[Tuple[str, str, str, str]] = [
      "a failing tool is skipped and named, but nothing routes around it to a second source",
      "backend/tools/executor.py, backend/tools/resilience.py"),
     ("Observability", "/api/metrics, /api/traces, an optional JSONL trace file, per-request traces "
-                      "with no personal content",
-     "a dashboard over them",
+                      "with no personal content, and /api/dashboard — one page over them, metadata only",
+     "no alerting: someone has to look at the page",
      "backend/observability/"),
     ("Evaluation", "python -m backend.check runs unit tests, the offline benchmark and the rules check",
      "CI wiring so it runs on every push",
@@ -356,7 +356,7 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
               "5. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
               "6. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
               "7. **Broader tax coverage.**",
-              "8. **Observability dashboard** over the existing metrics and traces.", ""]
+              "8. **Alerting** on the metrics the dashboard now shows — nothing shouts when a tool breaks.", ""]
 
     lines += ["## Known limits", ""]
     lines += table(["limit", "detail"], [[a, b] for a, b in KNOWN_LIMITS]) + [""]

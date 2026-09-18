@@ -3,11 +3,12 @@ import json
 import os
 import time
 import threading
+from pathlib import Path
 from collections import defaultdict, deque
 from typing import Optional, List, Dict, Any, Deque
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from dotenv import load_dotenv
 
@@ -560,6 +561,22 @@ async def metrics():
     if failing:
         data["failing_tools"] = failing
     return data
+
+
+@app.get("/api/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    """A single page over the metrics and traces that already exist.
+
+    Metadata only — no question text, no figures, nothing about any user — so it is safe to leave
+    open on a screen. Behind TORA_DEBUG_ENDPOINTS because it also serves /api/traces alongside it.
+    """
+    if not DEBUG_ENDPOINTS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
+    page = Path(__file__).parent / "observability" / "static" / "dashboard.html"
+    try:
+        return HTMLResponse(page.read_text(encoding="utf-8"))
+    except OSError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dashboard not installed.")
 
 
 @app.get("/api/traces")

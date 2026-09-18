@@ -133,6 +133,7 @@ class TelemetryHub:
             self.overflow_retries = 0
             self.planner_skipped = 0
             self.fast_path = 0
+            self.no_model_turns = 0
             self.complexity = defaultdict(int)
             self._recent.clear()
 
@@ -165,6 +166,8 @@ class TelemetryHub:
                 self.planner_skipped += 1
             if trace.planner.get("fast_path"):
                 self.fast_path += 1
+            if trace.llm["calls"] == 0:
+                self.no_model_turns += 1      # the whole turn answered by the engines
             if trace.complexity:
                 self.complexity[trace.complexity.get("level", "unknown")] += 1
             self._recent.append(data)
@@ -195,6 +198,7 @@ class TelemetryHub:
                 "intents": dict(self.intents),
                 "planner_skipped": self.planner_skipped,
                 "fast_path": self.fast_path,
+                "no_model_turns": self.no_model_turns,
                 "complexity": dict(self.complexity),
                 "tools": {
                     name: {"ok": c.get("ok", 0), "error": c.get("error", 0),
