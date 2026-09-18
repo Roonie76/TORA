@@ -363,17 +363,43 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
     return "\n".join(lines) + "\n"
 
 
+def _without_date(text: str) -> str:
+    """The generation date changes every day; the content it describes does not."""
+    return re.sub(r"Generated from the code on \d{4}-\d{2}-\d{2}", "Generated from the code", text)
+
+
+def _check(path: Path, fresh: str) -> int:
+    """Non-zero when the committed doc disagrees with the code it claims to describe."""
+    if not path.exists():
+        print(f"{path} is missing — run `python -m backend.status`.")
+        return 1
+    committed = _without_date(path.read_text(encoding="utf-8"))
+    if committed == _without_date(fresh):
+        print(f"{path} matches the code.")
+        return 0
+    import difflib
+    diff = list(difflib.unified_diff(committed.splitlines(), _without_date(fresh).splitlines(),
+                                     "committed", "from the code", lineterm="", n=1))
+    print("\n".join(diff[:60]))
+    print("\nStatus doc is stale — run `python -m backend.status` and commit it.")
+    return 1
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--print", action="store_true", dest="to_stdout")
     parser.add_argument("--no-tests", action="store_true", help="skip collecting test counts")
+    parser.add_argument("--check", action="store_true",
+                        help="fail if the committed doc no longer matches the code (used by CI)")
     args = parser.parse_args(argv)
 
     data = collect()
     tests = None if args.no_tests else unit_test_count()
     fe_tests = None if args.no_tests else frontend_test_count()
     text = render(data, tests, fe_tests)
+    if args.check:
+        return _check(Path(args.out), text)
     if args.to_stdout:
         print(text)
     else:

@@ -1,0 +1,23 @@
+# The rules library carries a checked-on date per rule; tax slabs, RBI limits and
+# deadlines go stale quietly. This asks once a week rather than finding out from a user.
+name: rules freshness
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - name: Check the rules library for staleness and drift
+        run: python -m backend.knowledge check
