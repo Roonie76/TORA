@@ -74,6 +74,14 @@ PARTIAL: List[Tuple[str, str, str, str]] = [
      "backend/docs/manual_test_plan.md"),
 ]
 
+EXTERNAL = [
+    ("Babel", "BSD-3-Clause", "CLDR number formatting behind `inr()` — Indian digit grouping now comes from "
+                              "locale data rather than hand-rolled string surgery (a fallback keeps the engines "
+                              "working if it is absent)."),
+    ("pyxirr", "Unlicense", "tests only: an independent implementation of PMT/FV used to differential-test the "
+                            "EMI and SIP engines. It already caught a rounding bug in required_sip."),
+]
+
 KNOWN_LIMITS: List[Tuple[str, str]] = [
     ("Latency on CPU", "median turn 140s, first token 97s, slowest 735s on 8 GB CPU-only with one model "
                        "instance. The fast paths remove a planner call (1-4 min) from the commonest questions."),
@@ -280,6 +288,9 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
     lines += table(["category", "facts"],
                    [[k, ", ".join(f"`{n}`" for n in v)] for k, v in data["fact_types"].items()]) + [""]
 
+    lines += ["### Outside code we lean on", ""]
+    lines += table(["library", "license", "what it does here"],
+                   [[f"`{n}`", lic, what] for n, lic, what in EXTERNAL]) + [""]
     lines += ["### Prompt assembly", "",
               "The system prompt is one document; each turn is sent only the sections it can use — the engine "
               "sections when a tool ran, the rules citation section when the rules library answered, the "

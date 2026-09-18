@@ -14,7 +14,7 @@ Generated from the code on 2026-09-18 by `python -m backend.status`. Everything 
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1070 |
+| Backend tests | 1109 |
 | Frontend tests | 33 |
 
 ## Built
@@ -90,6 +90,13 @@ Remembered fact types:
 | rent | `rent` |
 | savings | `savings` |
 
+### Outside code we lean on
+
+| library | license | what it does here |
+|---|---|---|
+| `Babel` | BSD-3-Clause | CLDR number formatting behind `inr()` — Indian digit grouping now comes from locale data rather than hand-rolled string surgery (a fallback keeps the engines working if it is absent). |
+| `pyxirr` | Unlicense | tests only: an independent implementation of PMT/FV used to differential-test the EMI and SIP engines. It already caught a rounding bug in required_sip. |
+
 ### Prompt assembly
 
 The system prompt is one document; each turn is sent only the sections it can use — the engine sections when a tool ran, the rules citation section when the rules library answered, the debt-stress section when the case is about debt. Small talk goes out at 987 tokens against 2,321 for the whole prompt (`backend/prompts/tora.py`; `TORA_PROMPT_SLICING=off` disables it).
@@ -117,7 +124,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1070 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1109 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.

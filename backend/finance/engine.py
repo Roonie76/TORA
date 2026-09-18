@@ -15,7 +15,7 @@ Conventions
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 MAX_MONTHS = 600  # 50 years
 MAX_AMOUNT = 1e12
@@ -66,21 +66,36 @@ def _years(name: str, value: float) -> float:
     return v
 
 
+try:  # CLDR grouping beats a hand-rolled one, but the engines must not depend on it being installed
+    from babel.numbers import format_decimal as _format_decimal
+except ImportError:  # pragma: no cover - exercised by test_money_format
+    _format_decimal = None
+
+
+def _group_indian(n: int) -> str:
+    """Fallback grouping when Babel is absent: 1234568 -> '12,34,568'."""
+    s = str(n)
+    if len(s) <= 3:
+        return s
+    head, tail = s[:-3], s[-3:]
+    groups = []
+    while len(head) > 2:
+        groups.insert(0, head[-2:])
+        head = head[:-2]
+    if head:
+        groups.insert(0, head)
+    return ",".join(groups) + "," + tail
+
+
 def inr(amount: float) -> str:
     """Indian digit grouping: 1234567.8 -> '₹12,34,568'."""
     neg = amount < 0
     n = int(round(abs(amount)))
-    s = str(n)
-    if len(s) > 3:
-        head, tail = s[:-3], s[-3:]
-        groups = []
-        while len(head) > 2:
-            groups.insert(0, head[-2:])
-            head = head[:-2]
-        if head:
-            groups.insert(0, head)
-        s = ",".join(groups) + "," + tail
-    return f"{'-' if neg else ''}₹{s}"
+    if _format_decimal is not None:
+        body = _format_decimal(n, format="#,##,##0", locale="en_IN")
+    else:
+        body = _group_indian(n)
+    return f"{'-' if neg else ''}₹{body}"
 
 
 # --------------------------------------------------------------------------- loans
@@ -171,21 +186,32 @@ def amortization(principal: float, annual_rate: float, tenure_months: int,
 
 # --------------------------------------------------------------------- investing
 
+def _sip_growth(annual_return: float, years: float, annual_step_up: float = 0.0) -> Tuple[float, float]:
+    """(future value, amount invested) for a ₹1 monthly SIP — unrounded, so callers can scale it.
+
+    An instalment goes in at the start of its month and earns for that month (annuity-due),
+    which is how a real SIP mandate behaves.
+    """
+    i = annual_return / 1200
+    months = int(round(years * 12))
+    value = invested = 0.0
+    contribution = 1.0
+    for month in range(1, months + 1):
+        value = (value + contribution) * (1 + i)
+        invested += contribution
+        if month % 12 == 0:
+            contribution *= 1 + annual_step_up / 100
+    return value, invested
+
+
 def sip_future_value(monthly_investment: float, annual_return: float, years: float,
                      annual_step_up: float = 0.0) -> Dict[str, Any]:
     m = _pos("monthly_investment", monthly_investment)
     r = _rate("annual_return", annual_return, 50)
     y = _years("years", years)
     step = _rate("annual_step_up", annual_step_up, 100)
-    i = r / 1200
-    months = int(round(y * 12))
-    value = invested = 0.0
-    contribution = m
-    for month in range(1, months + 1):
-        value = (value + contribution) * (1 + i)
-        invested += contribution
-        if month % 12 == 0:
-            contribution *= 1 + step / 100
+    unit_value, unit_invested = _sip_growth(r, y, step)
+    value, invested = m * unit_value, m * unit_invested
     return {
         "operation": "sip_future_value",
         "inputs": {"monthly_investment": m, "annual_return": r, "years": y, "annual_step_up": step},
@@ -224,8 +250,12 @@ def sip_change_impact(current_monthly: float, change: float, annual_return: floa
 
 def required_sip(target_amount: float, annual_return: float, years: float) -> Dict[str, Any]:
     t = _pos("target_amount", target_amount)
-    unit = sip_future_value(1.0, annual_return, years)["future_value"]
-    monthly = t / unit
+    r = _rate("annual_return", annual_return, 50)
+    y = _years("years", years)
+    # Divide by the unrounded unit value: the rounded one missed a short-tenure goal by tens of
+    # rupees a month (caught by differential-testing the engine against pyxirr).
+    unit_value, _ = _sip_growth(r, y)
+    monthly = t / unit_value
     return {
         "operation": "required_sip",
         "inputs": {"target_amount": t, "annual_return": annual_return, "years": years},
