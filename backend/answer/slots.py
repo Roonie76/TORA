@@ -53,6 +53,11 @@ def _looks_like(key: str, hints: Tuple[str, ...]) -> bool:
     return any(h in lower for h in hints)
 
 
+def format_value(key: str, value: Any) -> Optional[str]:
+    """The engine's value, written the way the user should see it (shared with answer.blocks)."""
+    return _format(key, value)
+
+
 def _format(key: str, value: Any) -> Optional[str]:
     if isinstance(value, bool) or value is None:
         return None

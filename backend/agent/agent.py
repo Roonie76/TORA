@@ -14,6 +14,7 @@ from ..llm.base import (
 from ..prompts.tora import TORA_SYSTEM_PROMPT, sections_for as prompt_sections_for, slice_prompt
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
+from ..answer import blocks as answer_blocks
 from ..answer import slots as answer_slots
 from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan, profile_plan
 from ..planner.tool_filter import needs_no_tools
@@ -194,6 +195,23 @@ def _prompt_slicing_enabled() -> bool:
 def _locked_slots_enabled() -> bool:
     """Phase 15: the engine owns every figure in the answer (TORA_LOCKED_SLOTS=off to disable)."""
     return os.getenv("TORA_LOCKED_SLOTS", "on").strip().lower() not in ("0", "off", "false", "no")
+
+
+def _block_answer_tokens() -> int:
+    """When the figures are already rendered, the model only owes prose. Measured live: it used
+    443 words to say what ~150 covers, because nothing stopped it (TORA_BLOCK_ANSWER_TOKENS).
+    320 proved too tight — it cut a debt plan mid-action-list — so the cap leaves room for the
+    prose and the truncation note stays as the backstop."""
+    try:
+        return max(0, int(os.getenv("TORA_BLOCK_ANSWER_TOKENS", "450").strip() or 0))
+    except ValueError:
+        return 450
+
+
+def _answer_block_enabled() -> bool:
+    """The engines print their own figures instead of the model retyping them
+    (TORA_ANSWER_BLOCK=off to disable)."""
+    return os.getenv("TORA_ANSWER_BLOCK", "on").strip().lower() not in ("0", "off", "false", "no")
 
 
 def _fast_path_enabled() -> bool:
@@ -547,6 +565,8 @@ class ToraAgent:
         locked_slots: Dict[str, str] = {}
         if _locked_slots_enabled():
             locked_slots = answer_slots.build_slots(effective_tool_context)
+        answer_block = (answer_blocks.render_block(effective_tool_context, locked_slots)
+                        if _answer_block_enabled() else "")
 
         tools_used, operations = [], []
         for result in (effective_tool_context.results if effective_tool_context else []):
@@ -574,7 +594,8 @@ class ToraAgent:
                 trace.prompt_sections = len(combined)
         account_note = (_account_note() + _case_note(complexity) + _forget_note(message, memory_commands, active_profile)
                         + _negative_amount_note(message) + _empty_memory_note(intent, active_profile)
-                        + answer_slots.slot_table(locked_slots))
+                        + answer_slots.slot_table(locked_slots)
+                        + answer_blocks.block_note(answer_block))
         # account_note is per-turn: it is passed as turn_notes so it lands after the stable
         # prompt instead of changing it (see ContextBuilder.build on prefix reuse).
         messages = self._build_messages(
@@ -592,6 +613,10 @@ class ToraAgent:
 
         options: Dict[str, Any] = {}
         max_answer_tokens = _max_answer_tokens()
+        if answer_block:
+            block_cap = _block_answer_tokens()
+            if block_cap:
+                max_answer_tokens = min(max_answer_tokens or block_cap, block_cap)
         if max_answer_tokens:
             options["num_predict"] = max_answer_tokens
         if temperature is not None:
@@ -617,6 +642,11 @@ class ToraAgent:
         final_messages = messages
         try:
             progress.emit("stage", stage="writing")
+            if answer_block and progress.active():
+                # Ahead of the model: at 4.1 tokens/sec the figures would otherwise appear a
+                # minute late. They are part of the answer, so they also go into streamed_parts.
+                streamed_parts.append(answer_block)
+                await progress.emit_token(answer_block)
             answer_options = dict(options)
             streamed = False
             if progress.active():
@@ -739,6 +769,13 @@ class ToraAgent:
                 options=options,
                 mode=mode,
             )
+
+        if answer_block and content:
+            # Told the figures were already on screen, the model restated them anyway, so the
+            # repetition is removed here rather than asked for. The block was streamed first,
+            # so the final answer carries it in the same place.
+            content = answer_blocks.strip_repeats(content, answer_block)
+            content = answer_block + content.lstrip("\n")
 
         if progress.active() and content != "".join(streamed_parts):
             # The checked / recovered answer differs from what was streamed: show the final text.

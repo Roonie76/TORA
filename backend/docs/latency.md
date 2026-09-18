@@ -77,12 +77,48 @@ run — but it is a stability fix, not a latency fix.
 The value of the experiment is the negative result: on this hardware nothing about the
 *model file* will make it faster. Only sending fewer tokens and writing fewer tokens will.
 
+
+## Lever A: the engine prints its own figures
+
+Built in `backend/answer/blocks.py`. A turn whose tools produced figures gets a block rendered
+from the locked slots (already trusted-tool-only, already formatted, already the grounding
+whitelist), streamed **ahead of** the model's text, and the model is told not to repeat it.
+
+Live, same five-turn debt conversation as the V01-V05 pass:
+
+| | original | answer-shape rules only | + rendered block |
+|---|---|---|---|
+| time to first content | 217.7 s | 217.7 s | **0.1 s** |
+| total turn | 719.9 s | 719.9 s | **525.3 s** |
+| words | 368 | 299 | 262 (block included) |
+
+The 0.1 s is the headline: the figures are on screen before the model has written a word, and
+they are the part of the answer the user actually came for.
+
+### What did not work, and what replaced it
+
+Told plainly that the figures were already displayed, gemma4:e4b restated all eight of them and
+the answer grew to **443 words — longer than before the change**. That is the second time in one
+day a prompt rule was ignored on the turn that mattered, so the repetition is now removed rather
+than requested: `strip_repeats` drops a list item or table row whose numbers all came from the
+block and which carries no advice of its own, keeping prose that uses a figure meaningfully
+("debt-free in 9 months") and any line with a figure the block does not have.
+
+Stripping cleans the answer but recovers no time — the tokens were already generated. So a turn
+with a block also gets a tighter token budget (`TORA_BLOCK_ANSWER_TOKENS`), since the figures are
+guaranteed on screen and only the prose is left to write. 320 proved too tight: it cut a debt
+plan mid-action-list. 450 is the current value and wants one more live run to confirm.
+
+### The rule this establishes
+
+Three times now the same thing has held: **what must be true gets rendered in code; what is
+merely asked for is advisory.** Locked slots for the figures, the block for the layout, and
+`strip_repeats` for the repetition — none of them depend on the model cooperating.
+
 ## What is left, in order of measured value
 
-1. **Write less.** At 4.1 tok/s, every 100 answer tokens is 24 s. Rendering tables,
-   figure lists and standing caveats deterministically in code — instead of having the
-   model type them — converts decode seconds into zero. The locked-slot table already
-   proves the figures are available without the model; the same is true of the layout.
+1. **Confirm the 450-token cap** does not truncate a long plan, and extend the block to
+   the standing caveats, which are still typed every time.
 2. **Send less.** History window trimming and further prompt slicing, at 2.6 s per
    100 tokens saved.
 3. **More cores, or a smaller model.** The only way past ~4 tok/s decode. Speculative
