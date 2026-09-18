@@ -124,7 +124,10 @@ def test_agent_fast_path_skips_planner_and_runs_tool(monkeypatch):
     monkeypatch.setenv("TORA_FAST_PATH", "on")
     llm = Recorder()
     resp = asyncio.run(_agent(llm).run(message="EMI on 30 lakh loan at 8.4% for 25 yrs"))
-    assert len(llm.calls) == 1  # answer only
+    # The fast path removes the planner call and tier 0 removes the answer call: an
+    # unambiguous EMI question now reaches the user without a model running at all.
+    assert llm.calls == []
+    assert resp.model == "engine"
     assert resp.tool_context.results[0].output["emi"] == 23954.98
     assert resp.complexity.level == "simple"
 

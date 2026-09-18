@@ -160,7 +160,10 @@ class _LLM(LLMProvider):
         return {}
 
 
-def test_agent_what_if_runs_deterministic_engine():
+def test_agent_what_if_runs_deterministic_engine(monkeypatch):
+    # Tier 0 would answer this from the engine with no model call; this test is about what
+    # the model does with the result, so it takes the model path deliberately.
+    monkeypatch.setenv("TORA_DIRECT_ANSWER", "off")
     registry = ToolRegistry()
     registry.register(FinanceCalcTool())
     llm = _LLM()

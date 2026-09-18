@@ -30,7 +30,10 @@ EMI_PLAN = {"thought": "emi", "requires_tools": True, "steps": [{"tool_name": "f
     "operation": "emi", "params": {"principal": 2000000, "annual_rate": 8.5, "tenure_months": 240}}}]}
 
 
-def test_trace_captures_pipeline_without_content(client, llm):
+def test_trace_captures_pipeline_without_content(client, llm, monkeypatch):
+    # Tier 0 would answer this from the engine with no model call; this test is about what
+    # the model does with the result, so it takes the model path deliberately.
+    monkeypatch.setenv("TORA_DIRECT_ANSWER", "off")
     llm.plans.append(EMI_PLAN)
     secret = "My salary is 1,23,456 per month. What is the EMI on a 20 lakh loan at 8.5% for 20 years?"
     cid = chat(client, secret).json()["conversation_id"]

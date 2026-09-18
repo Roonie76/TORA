@@ -638,7 +638,7 @@
     {
       "id": "calc-emi",
       "category": "calculation",
-      "description": "EMI comes from the finance engine",
+      "description": "EMI is answered from the finance engine with no model call (tier 0)",
       "turns": [
         {
           "user": "What would the EMI be for a 20 lakh home loan at 8.5% for 20 years?",
@@ -668,11 +668,12 @@
             "tool_output": {
               "finance_calc.emi": 17356.46
             },
-            "system_contains": [
-              "use these exact figures",
-              "EMI ₹17,356/month"
+            "grounding_action": "none",
+            "direct_answer": true,
+            "answer_contains": [
+              "₹17,356"
             ],
-            "grounding_action": "none"
+            "check_answer_offline": true
           }
         }
       ]
@@ -1128,7 +1129,8 @@
           }
         }
       ],
-      "locked_slots": false
+      "locked_slots": false,
+      "direct_answer": false
     },
     {
       "id": "grounding-derived",

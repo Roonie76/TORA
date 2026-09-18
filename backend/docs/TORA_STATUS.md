@@ -14,7 +14,7 @@ Generated from the code on 2026-09-18 by `python -m backend.status`. Everything 
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1167 |
+| Backend tests | 1182 |
 | Frontend tests | 33 |
 
 ## Built
@@ -124,7 +124,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1167 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1182 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
@@ -132,7 +132,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Configuration
 
-`TORA_ANSWER_BLOCK`, `TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_BLOCK_ANSWER_TOKENS`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_PROMPT_SLICING`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
+`TORA_ANSWER_BLOCK`, `TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_BLOCK_ANSWER_TOKENS`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_DIRECT_ANSWER`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_PROMPT_SLICING`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`
 
 ## Partial — built, with a named gap
 

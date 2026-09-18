@@ -60,6 +60,9 @@ def test_stream_emits_stages_tool_tokens_and_final(client):
 
 
 def test_stream_replace_event_when_grounding_rewrites(client, monkeypatch):
+    # Tier 0 would answer this from the engine with no model call; this test is about what
+    # the model does with the result, so it takes the model path deliberately.
+    monkeypatch.setenv("TORA_DIRECT_ANSWER", "off")
     c, fake = client
     answers = iter(["You will pay ₹99,999 a month.", "Your EMI is ₹23,955 a month."])
 

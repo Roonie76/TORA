@@ -15,6 +15,7 @@ from ..prompts.tora import TORA_SYSTEM_PROMPT, sections_for as prompt_sections_f
 from ..planner.models import ToolPlan
 from ..planner.planner import Planner
 from ..answer import blocks as answer_blocks
+from ..answer import direct as answer_direct
 from ..answer import slots as answer_slots
 from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan, profile_plan
 from ..planner.tool_filter import needs_no_tools
@@ -206,6 +207,12 @@ def _block_answer_tokens() -> int:
         return max(0, int(os.getenv("TORA_BLOCK_ANSWER_TOKENS", "450").strip() or 0))
     except ValueError:
         return 450
+
+
+def _direct_answer_enabled() -> bool:
+    """Tier 0: an unambiguous calculation is answered from the engine's own summary with no
+    model call at all (TORA_DIRECT_ANSWER=off to disable)."""
+    return os.getenv("TORA_DIRECT_ANSWER", "on").strip().lower() not in ("0", "off", "false", "no")
 
 
 def _answer_block_enabled() -> bool:
@@ -596,6 +603,39 @@ class ToraAgent:
                         + _negative_amount_note(message) + _empty_memory_note(intent, active_profile)
                         + answer_slots.slot_table(locked_slots)
                         + answer_blocks.block_note(answer_block))
+        # Tier 0: when one engine answered an unambiguous question, the engine's own summary
+        # is the answer. Nothing is left for a model to add, and at 4.1 tokens/sec of decode
+        # the cheapest model call is the one that does not happen.
+        if _direct_answer_enabled():
+            written = answer_direct.direct_answer(
+                message=message, intent=intent, tool_context=effective_tool_context,
+                block=answer_block,
+                has_documents=bool(conversation_state is not None and conversation_state.documents),
+            )
+            if written:
+                logger.info("Answered from the engine directly; no model call.")
+                if trace is not None:
+                    trace.direct_answer = True
+                progress.emit("stage", stage="writing")
+                await progress.emit_token(written)
+                # Grounded by construction: every figure is the engine's, so there is nothing
+                # for the figure check to correct. Said explicitly rather than left as None.
+                direct_grounding = {"checked": True, "ok": True, "action": "none",
+                                    "source": "engine", "unsupported": []}
+                if trace is not None:
+                    trace.grounding = {"checked": True, "unsupported": 0, "action": "none"}
+                return AgentResponse(
+                    content=written,
+                    model="engine",
+                    done=True,
+                    plan=executed_plan,
+                    tool_context=effective_tool_context,
+                    financial_profile=active_profile if isinstance(active_profile, FinancialProfile) else None,
+                    intent=intent,
+                    grounding=direct_grounding,
+                    complexity=complexity,
+                )
+
         # account_note is per-turn: it is passed as turn_notes so it lands after the stable
         # prompt instead of changing it (see ContextBuilder.build on prefix reuse).
         messages = self._build_messages(

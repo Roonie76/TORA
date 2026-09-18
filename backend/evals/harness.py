@@ -204,11 +204,16 @@ class EvalHarness:
         previous_fast = os.environ.get("TORA_FAST_PATH")
         # Production default is on; scenarios that exercise the LLM planner itself opt out.
         os.environ["TORA_FAST_PATH"] = "off" if scenario.get("fast_path") is False else "on"
+        previous_direct = os.environ.get("TORA_DIRECT_ANSWER")
+        # Tier 0 answers an unambiguous calculation with no model call, which is the wrong thing
+        # for a scenario whose whole point is what the model does with the result.
+        os.environ["TORA_DIRECT_ANSWER"] = "off" if scenario.get("direct_answer") is False else "on"
         try:
             return await self._run_turns(scenario)
         finally:
             reset_current_identity(token)
-            for name, previous in (("TORA_FAST_PATH", previous_fast), ("TORA_LOCKED_SLOTS", previous_slots)):
+            for name, previous in (("TORA_FAST_PATH", previous_fast), ("TORA_LOCKED_SLOTS", previous_slots),
+                                   ("TORA_DIRECT_ANSWER", previous_direct)):
                 if previous is None:
                     os.environ.pop(name, None)
                 else:
@@ -290,6 +295,10 @@ class EvalHarness:
         if "fast_path" in expect:
             got_fast = bool(response.plan is not None and (response.plan.thought or "").startswith("fast path"))
             add("fast_path", got_fast == expect["fast_path"], f"got {got_fast}")
+        if "direct_answer" in expect:
+            # Tier 0: the engine's own summary was the answer, so no model was called.
+            got_direct = getattr(response, "model", "") == "engine"
+            add("direct_answer", got_direct == expect["direct_answer"], f"got {got_direct}")
         if "complexity" in expect:
             got_level = getattr(getattr(response, "complexity", None), "level", None)
             add("complexity", got_level == expect["complexity"], f"got {got_level}")

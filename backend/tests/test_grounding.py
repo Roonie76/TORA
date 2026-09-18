@@ -110,6 +110,9 @@ EMI_PLAN = ('{"requires_tools": true, "steps": [{"tool_name": "finance_calc", "a
 
 
 def test_grounded_answer_passes_untouched(monkeypatch):
+    # Tier 0 would answer this from the engine with no model call; this test is about what
+    # the model does with the result, so it takes the model path deliberately.
+    monkeypatch.setenv("TORA_DIRECT_ANSWER", "off")
     monkeypatch.setenv("TORA_GROUNDING_MODE", "regenerate")
     llm = GroundingLLM(["Your EMI is ₹17,356 per month for the ₹20 lakh loan."], plan=EMI_PLAN)
     r = asyncio.run(make_agent(llm).run("What is the EMI for a 20 lakh loan at 8.5% for 20 years?"))
@@ -118,6 +121,9 @@ def test_grounded_answer_passes_untouched(monkeypatch):
 
 
 def test_hallucination_triggers_one_regeneration(monkeypatch):
+    # Tier 0 would answer this from the engine with no model call; this test is about what
+    # the model does with the result, so it takes the model path deliberately.
+    monkeypatch.setenv("TORA_DIRECT_ANSWER", "off")
     monkeypatch.setenv("TORA_GROUNDING_MODE", "regenerate")
     llm = GroundingLLM(["Your EMI is ₹18,900 per month.", "Your EMI is ₹17,356 per month."], plan=EMI_PLAN)
     r = asyncio.run(make_agent(llm).run("What is the EMI for a 20 lakh loan at 8.5% for 20 years?"))
@@ -128,6 +134,9 @@ def test_hallucination_triggers_one_regeneration(monkeypatch):
 
 
 def test_persistent_hallucination_is_annotated(monkeypatch):
+    # Tier 0 would answer this from the engine with no model call; this test is about what
+    # the model does with the result, so it takes the model path deliberately.
+    monkeypatch.setenv("TORA_DIRECT_ANSWER", "off")
     monkeypatch.setenv("TORA_GROUNDING_MODE", "regenerate")
     llm = GroundingLLM(["EMI ₹18,900.", "EMI ₹19,100."], plan=EMI_PLAN)
     r = asyncio.run(make_agent(llm).run("What is the EMI for a 20 lakh loan at 8.5% for 20 years?"))
