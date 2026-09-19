@@ -376,7 +376,12 @@ class ToraAgent:
 
         # 1a. Model-assisted extraction when the rules found nothing in a money statement
         model_facts: List[Dict[str, Any]] = []
-        if isinstance(active_profile, FinancialProfile) and should_try_llm_extraction(message, candidates):
+        # fast_plan is pure regex and costs nothing; asking it here keeps a self-contained sum
+        # from also being mined for the user's facts.
+        # (intent is classified later in the turn; fast_plan does not need it here)
+        calculation_planned = bool(_fast_path_enabled() and fast_plan(message))
+        if isinstance(active_profile, FinancialProfile) and should_try_llm_extraction(
+                message, candidates, calculation_planned=calculation_planned):
             model_facts = await propose_facts(self.llm_provider, message, model=model)
             if model_facts:
                 FactManager.apply_candidates(active_profile, model_facts, turn=turn)

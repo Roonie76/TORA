@@ -131,3 +131,34 @@ def test_direct_grounding_reports_a_count_not_a_flag(monkeypatch):
     checked = r.grounding["checked"]
     assert isinstance(checked, int) and not isinstance(checked, bool), f"got {checked!r}"
     assert checked > 0
+
+
+class TestNoModelCallSlipsThrough:
+    """Measured live: an EMI question took 0.03s, but "how much do I need to invest monthly to
+    reach 5 lakh in 3 years at 12%?" took 20.3s — a fact-extraction call that returned nothing,
+    on a turn the engine answers by itself. The numbers in a sum are inputs, not facts."""
+
+    def test_a_self_contained_sum_is_not_mined_for_facts(self):
+        from backend.context.llm_extractor import should_try
+        message = "How much do I need to invest monthly to reach 5 lakh in 3 years at 12%?"
+        assert should_try(message, [], calculation_planned=True) is False
+
+    def test_a_statement_about_the_user_still_is(self, monkeypatch):
+        from backend.context.llm_extractor import should_try
+        monkeypatch.setenv("TORA_LLM_EXTRACTION", "on")
+        message = "I take home about 88 thousand a month after tax and my rent is 22 thousand."
+        assert should_try(message, [], calculation_planned=False) is True
+
+    def test_the_whole_turn_makes_no_model_call(self, monkeypatch):
+        import asyncio
+
+        monkeypatch.setenv("TORA_FAST_PATH", "on")
+        monkeypatch.setenv("TORA_LOCKED_SLOTS", "on")
+        monkeypatch.setenv("TORA_LLM_EXTRACTION", "on")
+        from backend.tests.test_fast_path import Recorder, _agent
+
+        llm = Recorder()
+        r = asyncio.run(_agent(llm).run(
+            message="How much do I need to invest monthly to reach 5 lakh in 3 years at 12%?"))
+        assert r.model == "engine"
+        assert llm.calls == [], f"expected no model call, got {len(llm.calls)}"

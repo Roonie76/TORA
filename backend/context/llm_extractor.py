@@ -103,9 +103,16 @@ def extraction_mode() -> str:
     return mode if mode in ("auto", "off") else "auto"
 
 
-def should_try(message: str, rule_candidates: List[Dict[str, Any]]) -> bool:
+def should_try(message: str, rule_candidates: List[Dict[str, Any]],
+               calculation_planned: bool = False) -> bool:
     """Only call the model when rules found nothing but the message looks like a personal money statement."""
     if extraction_mode() == "off" or rule_candidates:
+        return False
+    if calculation_planned:
+        # The fast path already read every number here as a parameter to a sum. They are inputs to
+        # a calculation, not facts about the user — storing "5 lakh" from "how much do I need to
+        # invest to reach 5 lakh" would be wrong. Measured on the live box: this call cost 20.3s
+        # and returned nothing, on a turn the engine answers by itself.
         return False
     text = message or ""
     if len(text) > 1200 or not _MONEYISH.search(text) or not _FINANCE_HINT.search(text):
