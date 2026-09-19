@@ -620,10 +620,12 @@ class ToraAgent:
                 await progress.emit_token(written)
                 # Grounded by construction: every figure is the engine's, so there is nothing
                 # for the figure check to correct. Said explicitly rather than left as None.
-                direct_grounding = {"checked": True, "ok": True, "action": "none",
+                # `checked` is a COUNT of figures, not a flag — the UI renders it
+                # ("3 figures checked"), so a bool here shows the user "true figures checked".
+                direct_grounding = {"checked": len(locked_slots), "ok": True, "action": "none",
                                     "source": "engine", "unsupported": []}
                 if trace is not None:
-                    trace.grounding = {"checked": True, "unsupported": 0, "action": "none"}
+                    trace.grounding = {"checked": len(locked_slots), "unsupported": 0, "action": "none"}
                 return AgentResponse(
                     content=written,
                     model="engine",

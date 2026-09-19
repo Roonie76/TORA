@@ -118,3 +118,21 @@ class TestStrippingWhatTheModelRetyped:
         from backend.answer.blocks import strip_repeats
         text = "- **Total debt:** ₹3,70,000"
         assert strip_repeats(text, "") == text
+
+
+class TestItFitsAPhone:
+    """Measured in a browser at 390px: the message column gives the table 312px. The row label
+    plus two columns fits exactly; a third took it to 391px, where it scrolled but nothing said
+    so, and the last column just looked cut off."""
+
+    def test_the_table_is_never_wider_than_a_phone(self):
+        block = block_for(debt.debt_rescue_plan(debts=DEBTS, monthly_income=88000,
+                                                essential_expenses=40000))
+        header = next(l for l in block.splitlines() if l.startswith("| |"))
+        assert header.count("|") - 1 <= 3, f"row label + 2 columns at most, got {header}"
+
+    def test_a_wide_engine_result_is_narrowed_not_dropped(self):
+        block = block_for(debt.debt_rescue_plan(debts=DEBTS, monthly_income=88000,
+                                                essential_expenses=40000))
+        assert "| **Avalanche** |" in block and "| **Snowball** |" in block
+        assert "Total debt" in block          # what the table cannot hold is in the list below

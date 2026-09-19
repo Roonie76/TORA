@@ -114,3 +114,20 @@ class TestIntentIsNotTheGate:
     def test_a_real_plan_is_still_written_by_the_model(self, operation):
         assert answer_for("Plan this for me in 3 years",
                           {"operation": operation, "summary": "A plan."}) is None
+
+
+def test_direct_grounding_reports_a_count_not_a_flag(monkeypatch):
+    """The UI renders this value as "N figures checked". A bool showed the user
+    "true figures checked" — caught by a browser screenshot, not by any unit test."""
+    import asyncio
+
+    monkeypatch.setenv("TORA_FAST_PATH", "on")
+    monkeypatch.setenv("TORA_LOCKED_SLOTS", "on")
+    from backend.tests.test_fast_path import Recorder, _agent
+
+    llm = Recorder()
+    r = asyncio.run(_agent(llm).run(message="EMI on 30 lakh loan at 8.4% for 25 yrs"))
+    assert r.model == "engine", "tier 0 should have answered this"
+    checked = r.grounding["checked"]
+    assert isinstance(checked, int) and not isinstance(checked, bool), f"got {checked!r}"
+    assert checked > 0

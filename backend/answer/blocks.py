@@ -27,7 +27,11 @@ from typing import Any, Dict, List, Optional
 from .slots import TRUSTED_TOOLS, format_value
 
 MAX_ROWS = 8
-MAX_COLUMNS = 4
+# The row label plus two columns is what fits a 390px phone (312px of room, measured in a
+# browser). With three the table ran to 391px: it scrolled, but nothing on screen said so, so
+# the last column simply looked cut off — worse than not showing it. TORA's users are on
+# phones, so the phone wins; what does not fit goes in the figure list under the table.
+MAX_COLUMNS = 2
 MAX_PER_SECTION = 8
 MAX_SECTIONS = 3
 # Acronyms the generic title-case would mangle.
