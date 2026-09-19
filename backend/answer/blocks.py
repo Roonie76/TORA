@@ -32,8 +32,10 @@ MAX_ROWS = 8
 # the last column simply looked cut off — worse than not showing it. TORA's users are on
 # phones, so the phone wins; what does not fit goes in the figure list under the table.
 MAX_COLUMNS = 2
-MAX_PER_SECTION = 8
+MAX_PER_SECTION = 14   # a three-bucket budget is 12 figures plus what is left over
 MAX_SECTIONS = 3
+# Container names that say nothing about the figure underneath them.
+GENERIC_GROUPS = frozenset({"buckets", "items", "rows", "results", "values", "plan", "detail"})
 # Acronyms the generic title-case would mangle.
 TITLES = {
     "emi": "EMI", "sip_future_value": "SIP growth", "required_sip": "Monthly SIP needed",
@@ -44,8 +46,22 @@ TITLES = {
 
 
 def _label(key: str) -> str:
-    text = re.sub(r"\s+(percent|pct)$", "", re.sub(r"[_\-]+", " ", str(key)).strip())
+    # "actual_percent" must not collapse to "Actual": the budget block then showed "Actual:
+    # ₹72,348" and "Actual: 76.2%" as if they were the same field. It becomes "Actual %".
+    text = re.sub(r"\s+(percent|pct)$", " %", re.sub(r"[_\-]+", " ", str(key)).strip())
     return TITLES.get(str(key), text[:1].upper() + text[1:] if text else text)
+
+
+def _field_label(field: str) -> str:
+    """A nested figure keeps the group it belongs to, so "Needs target" is not just "Target".
+
+    Live on a budget plan the block listed Target twice and Actual four times with nothing saying
+    which bucket each belonged to — the same relabelling problem the locked slots exist to stop.
+    """
+    parts = [p for p in str(field).split(".") if p]
+    if len(parts) >= 2 and not parts[-2].isdigit() and parts[-2] not in GENERIC_GROUPS:
+        return f"{_label(parts[-2])} {_label(parts[-1]).lower()}"
+    return _label(parts[-1]) if parts else ""
 
 
 def _rows(comparison: Any) -> List[Dict[str, Any]]:
@@ -142,12 +158,24 @@ def render_block(tool_context: Any, slots: Dict[str, str]) -> str:
         # A figure the table already shows would only be repeated by the list below it.
         shown = {cell.strip() for line in table for cell in line.split("|")}
         body = list(table)
-        lines = [f"- **{_label(field.split('.')[-1])}:** {value}"
-                 for field, value in fields if value not in shown]
+        # Truncating mid-group is its own kind of wrong: a budget that lists Needs and Wants but
+        # stops before Savings reads as though there is no savings bucket. Groups go in whole.
+        groups: Dict[str, List[str]] = {}
+        for field, value in fields:
+            if value in shown:
+                continue
+            parts = [p for p in field.split(".") if p]
+            key = parts[-2] if len(parts) >= 2 and not parts[-2].isdigit() else ""
+            groups.setdefault(key, []).append(f"- **{_field_label(field)}:** {value}")
+        lines: List[str] = []
+        for group_lines in groups.values():
+            if lines and len(lines) + len(group_lines) > MAX_PER_SECTION:
+                break
+            lines += group_lines
         if lines:
             if body:
                 body.append("")
-            body += lines[:MAX_PER_SECTION]
+            body += lines[:max(MAX_PER_SECTION, len(lines))]
         if not body:
             continue
         sections.append(f"**{_label(operation)}**")

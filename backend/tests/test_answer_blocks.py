@@ -136,3 +136,45 @@ class TestItFitsAPhone:
                                                 essential_expenses=40000))
         assert "| **Avalanche** |" in block and "| **Snowball** |" in block
         assert "Total debt" in block          # what the table cannot hold is in the list below
+
+
+class TestNestedFiguresKeepTheirGroup:
+    """From a live budget plan on localhost. The block read:
+
+        - **Target:** ₹47,500      - **Actual:** ₹72,348
+        - **Actual:** 76.2%        - **Target:** ₹28,500
+
+    Target twice, Actual four times, nothing saying which bucket — the same relabelling the
+    locked slots exist to stop, reintroduced by the block that replaced them.
+    """
+
+    @staticmethod
+    def budget():
+        return block_for(engine.budget_plan(monthly_income=95000, needs={"rent": 24000}, emis=48348))
+
+    def test_every_label_is_unique(self):
+        labels = [l.split(":**")[0] for l in self.budget().splitlines() if l.startswith("- **")]
+        assert len(labels) == len(set(labels)), f"duplicate labels: {labels}"
+
+    def test_a_figure_names_its_bucket(self):
+        block = self.budget()
+        assert "**Needs target:** ₹47,500" in block
+        assert "**Wants target:** ₹28,500" in block
+        assert "**Savings target:** ₹19,000" in block
+
+    def test_a_percentage_is_not_the_same_label_as_an_amount(self):
+        block = self.budget()
+        assert "**Needs actual:** ₹72,348" in block
+        assert "**Needs actual %:** 76.2%" in block
+
+    def test_a_group_is_never_shown_half(self):
+        """Listing Needs and Wants but stopping before Savings reads as "no savings bucket"."""
+        block = self.budget()
+        for bucket in ("Needs", "Wants", "Savings"):
+            fields = [l for l in block.splitlines() if l.startswith(f"- **{bucket} ")]
+            assert len(fields) == 4, f"{bucket} showed {len(fields)} of 4 figures"
+
+    def test_a_flat_result_is_unchanged(self):
+        block = block_for(engine.emi(principal=4000000, annual_rate=8.75, tenure_months=240))
+        assert "- **EMI:** ₹35,348" in block
+        assert "- **Total interest:** ₹44,83,623" in block

@@ -93,7 +93,11 @@ def _walk(node: Any, prefix: str, out: Dict[str, str], depth: int = 0) -> None:
         for idx, item in enumerate(node[:6]):
             label = None
             if isinstance(item, dict):
-                label = item.get("name") or item.get("item") or item.get("option") or item.get("label")
+                # Engines name a row differently depending on what it is: budget_plan uses
+                # "bucket", others "name"/"item"/"option". Missing one numbers the rows 1,2,3
+                # and the slot loses what it was about.
+                label = (item.get("name") or item.get("item") or item.get("option")
+                         or item.get("label") or item.get("bucket") or item.get("category"))
             name = f"{prefix}.{_slug(label)}" if label else f"{prefix}.{idx + 1}"
             _walk(item, name, out, depth + 1)
 
