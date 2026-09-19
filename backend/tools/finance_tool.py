@@ -27,6 +27,29 @@ class FinanceCalcInput(BaseModel):
 _PARAM_DOC = "; ".join(f"{op}({args})" for op, args in OPERATION_PARAMS.items())
 
 
+def _drop_unset_optionals(operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
+    """A parameter the model set to null is one it did not have, not a bad number.
+
+    Seen live: a health check on a real conversation failed with "'high_interest_debt' must be a
+    number" after the model emitted null for an optional field it had no value for. The turn cost
+    five minutes and two model calls to produce an error, when the parameter has a default of 0
+    and omitting it would have worked. A null for a REQUIRED parameter is left alone, so it still
+    fails as a missing parameter rather than silently becoming a default.
+    """
+    import inspect
+
+    from ..finance.engine import OPERATIONS
+
+    fn = OPERATIONS.get(operation)
+    if fn is None or not isinstance(params, dict):
+        return params
+    optional = {name for name, p in inspect.signature(fn).parameters.items()
+                if p.default is not inspect.Parameter.empty}
+    blank = ("", "none", "null", "n/a", "na", "unknown", "-")
+    return {k: v for k, v in params.items()
+            if not (k in optional and (v is None or (isinstance(v, str) and v.strip().lower() in blank)))}
+
+
 class FinanceCalcTool(BaseTool):
     name: str = "finance_calc"
     description: str = (
@@ -71,4 +94,4 @@ class FinanceCalcTool(BaseTool):
         return None
 
     async def execute(self, operation: str, params: Dict[str, Any], **kwargs: Any) -> Dict[str, Any]:
-        return run_operation(operation, params)
+        return run_operation(operation, _drop_unset_optionals(operation, params))
