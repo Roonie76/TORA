@@ -145,3 +145,29 @@ every tax answer has to cite the section it rests on and the engine summary does
 The comparison engines are excluded because their figures are half the answer. Anything asking
 what to *do* — "should I", "which is better", "prepay or invest" — goes to the model, which is
 what the model is for.
+
+## Full localhost pass, 19 Sep
+
+Real browser against the real backend and the real model, end to end through the chat UI.
+
+| question | end to end | model calls |
+|---|---|---|
+| EMI on 50 lakh at 9% for 20 years | **0.57 s** | 0 |
+| Monthly needed to reach 5 lakh in 3 years | **0.54 s** (was 20.35 s) | 0 |
+| What 10 lakh is worth in 10 years at 6% inflation | **0.55 s** | 0 |
+| Recall: "What is my salary?" | 4.2 s | 1 |
+| Follow-up: "And my rent?" | 16.6 s | 1 |
+| Tax on 13.75 lakh | 185 s (figures on screen in 0.06 s) | 1 |
+| "Prepay or invest?" — judgement, left to the model | 345 s (figures in 203 s) | 2 |
+
+The 20.35 s -> 0.54 s came from the pass itself: a turn the engine answered by itself was still
+paying for an LLM fact-extraction call that returned nothing. A self-contained sum is not a
+statement about the user.
+
+Load and robustness, same box: 200 conversations, 600 turns, 67.3 turns/sec, p95 7.3 s, zero
+errors; 50 signed-in users isolated; 20 parallel turns on one conversation with no lost or
+duplicated messages; 30 cancelled streams with no leftover tasks; rate limiting returns 429 with
+Retry-After; 346 malformed and hostile payloads with zero server errors. Peak RSS 86.6 MB.
+
+What is still slow is what should be: a question that asks what to *do*. The figures for it are
+on screen in seconds; the judgement takes minutes, and only different hardware changes that.
