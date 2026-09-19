@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from .slots import TRUSTED_TOOLS, format_value
+from .slots import ROW_NAME_KEYS, TRUSTED_TOOLS, _row_label, _slug, format_value
 
 MAX_ROWS = 8
 # The row label plus two columns is what fits a 390px phone (312px of room, measured in a
@@ -65,11 +65,19 @@ def _field_label(field: str) -> str:
 
 
 def _rows(comparison: Any) -> List[Dict[str, Any]]:
-    """Engines shape `comparison` two ways: a list of rows, or a dict keyed by the row's name."""
+    """Engines shape this two ways: a list of rows, or a dict keyed by the row's name. Either way
+    the row's own name may live under any of several keys, so it is resolved the same way the
+    slots resolve it and moved to `item`, which is what the table renders in the first column."""
     if isinstance(comparison, list):
-        return [r for r in comparison if isinstance(r, dict)]
+        out = []
+        for row in comparison:
+            if not isinstance(row, dict):
+                continue
+            name = _row_label(row)
+            out.append(dict(row, item=name) if name else dict(row))
+        return out
     if isinstance(comparison, dict):
-        return [dict(row, item=row.get("item") or row.get("option") or name)
+        return [dict(row, item=_row_label(row) or name)
                 for name, row in comparison.items() if isinstance(row, dict)]
     return []
 
@@ -89,7 +97,8 @@ def _cell(key: str, value: Any) -> Optional[str]:
 def _comparison_table(comparison: Any) -> List[str]:
     """The engine's own comparison rows, with the engine's own column labels."""
     rows = _rows(comparison)[:MAX_ROWS]
-    cells = [{k: _cell(k, v) for k, v in row.items() if k not in ("item", "option")} for row in rows]
+    cells = [{k: _cell(k, v) for k, v in row.items() if k not in ROW_NAME_KEYS and k != "item"}
+             for row in rows]
     columns: List[str] = []
     for row in cells:
         for key, value in row.items():
@@ -117,6 +126,12 @@ def _group(slots: Dict[str, str]) -> Dict[str, List[tuple]]:
             continue
         if rest.startswith("given."):
             givens.setdefault(head, set()).add(value)
+            continue
+        if any(part.isdigit() for part in rest.split(".")):
+            # An unnamed row in a list — a tax slab, a what-if variant. There is nothing to call
+            # it, so flattened into a list it becomes "To / Rate % / Tax / From / To / Rate %..."
+            # with every label repeated and no way to tell the rows apart. A tax answer rendered
+            # 25 such lines. Rows that can be named reach the reader as a table, from `comparison`.
             continue
         grouped.setdefault(head, []).append((rest.count("."), rest, value))
     out: Dict[str, List[tuple]] = {}
@@ -149,14 +164,21 @@ def render_block(tool_context: Any, slots: Dict[str, str]) -> str:
             continue
         if result.tool_name not in TRUSTED_TOOLS:
             continue
-        if result.output.get("comparison"):
-            comparisons[str(result.output.get("operation") or result.tool_name)] = result.output["comparison"]
+        # Some engines call it "comparison", capital_gains_tax calls it "options" — both are a
+        # set of named rows being weighed against each other, which is a table. Flattened into a
+        # figure list it rendered as "12 5 without indexation method: 1".
+        rows = result.output.get("comparison") or result.output.get("options")
+        if rows:
+            comparisons[str(result.output.get("operation") or result.tool_name)] = rows
 
     sections: List[str] = []
     for operation, fields in list(_group(slots).items())[:MAX_SECTIONS]:
         table = _comparison_table(comparisons.get(operation)) if operation in comparisons else []
-        # A figure the table already shows would only be repeated by the list below it.
+        # A figure the table already shows would only be repeated by the list below it — both the
+        # values, and every field belonging to a row the table has already named.
         shown = {cell.strip() for line in table for cell in line.split("|")}
+        in_table = {_slug(row.get("item")) for row in _rows(comparisons.get(operation))
+                    if row.get("item")} if table else set()
         body = list(table)
         # Truncating mid-group is its own kind of wrong: a budget that lists Needs and Wants but
         # stops before Savings reads as though there is no savings bucket. Groups go in whole.
@@ -165,6 +187,8 @@ def render_block(tool_context: Any, slots: Dict[str, str]) -> str:
             if value in shown:
                 continue
             parts = [p for p in field.split(".") if p]
+            if any(p in in_table for p in parts):
+                continue
             key = parts[-2] if len(parts) >= 2 and not parts[-2].isdigit() else ""
             groups.setdefault(key, []).append(f"- **{_field_label(field)}:** {value}")
         lines: List[str] = []

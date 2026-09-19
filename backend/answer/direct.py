@@ -27,12 +27,12 @@ from typing import Any, List, Optional
 
 # Engines whose output is deterministic and whose wording is the engine author's, not a model's.
 #
-# tax_calc is deliberately NOT here. The eval suite caught it: "Tax results carry their legal
-# basis" requires every tax answer to cite the section it rests on (scenario rules-tax-basis,
-# "Legal basis: ... Section 156"), and the engine summary does not carry that. A tax answer
-# without its legal basis is a worse answer delivered faster. Tax can join this list once the
-# rules library is folded into the direct answer.
-DIRECT_TOOLS = ("finance_calc",)
+# tax_calc was held back until this answer could carry a tax result's legal basis — the eval
+# "Tax results carry their legal basis" requires every tax answer to cite the section it rests on
+# (scenario rules-tax-basis, "Section 156"), and a tax answer without it is a worse answer
+# delivered faster. tax_calc already returns those citations from the reviewed rules library, so
+# they are rendered below and it now qualifies.
+DIRECT_TOOLS = ("finance_calc", "tax_calc")
 # "planning" is here because the classifier reads "invest monthly to reach 5 lakh in 3 years" as
 # planning when it is a single sum. The operation list below, not the intent, is what keeps a
 # genuine plan away from this path.
@@ -57,6 +57,7 @@ _WANTS_JUDGEMENT = re.compile(
 _WANTS_PROSE = re.compile(r"^\s*(?:why|how\s+does|how\s+do|what\s+is\s+the\s+difference|explain|tell\s+me\s+about)\b",
                           re.IGNORECASE)
 MAX_WARNINGS = 3
+MAX_BASIS = 6
 
 
 def _intent_name(intent: Any) -> str:
@@ -97,6 +98,11 @@ def direct_answer(message: str, intent: Any, tool_context: Any, block: str,
     summary = str(result.output.get("summary") or "").strip()
     if not summary:
         return None
+    basis = [str(b).strip() for b in (result.output.get("legal_basis") or []) if str(b).strip()]
+    if result.tool_name == "tax_calc" and not basis:
+        # The rule this rests on is not optional in a tax answer. If the engine did not give one,
+        # the model writes the answer and the prompt's own citation rules apply.
+        return None
 
     parts: List[str] = []
     if block:
@@ -105,5 +111,9 @@ def direct_answer(message: str, intent: Any, tool_context: Any, block: str,
     warnings = [str(w).strip() for w in (result.output.get("warnings") or []) if str(w).strip()]
     if warnings:
         parts.append("\n".join(f"- {w}" for w in warnings[:MAX_WARNINGS]))
+    # A tax figure without the rule it rests on is half an answer. These come from the reviewed
+    # rules library, carry the tax year, and are the reason tax could not take this path before.
+    if basis:
+        parts.append("**Legal basis**\n" + "\n".join(f"- {b}" for b in basis[:MAX_BASIS]))
     parts.append("Ask if you want this broken down, or run with different numbers.")
     return "\n\n".join(parts).strip()

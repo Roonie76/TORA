@@ -14,7 +14,7 @@ Generated from the code on 2026-09-19 by `python -m backend.status`. Everything 
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1253 |
+| Backend tests | 1258 |
 | Frontend tests | 33 |
 
 ## Built
@@ -125,7 +125,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1253 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1258 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
@@ -156,13 +156,13 @@ The full plan, with what each item is worth, is in `backend/docs/ROADMAP_TO_100.
 
 1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand. Never completed.
    A first pass on 19 Sep found three defects; `backend/docs/latency.md` has the results.
-2. **Tier 0 for tax.** An unambiguous tax question still needs the model, because the answer must carry its legal basis and the engine summary does not (eval `rules-tax-basis`).
-3. **Answer cache.** The same question against unchanged facts has the same answer.
-4. **Non-blocking long turns.** A minutes-long turn should not hold a connection.
-5. **General scenario engine.** Change several facts at once and re-run every relevant engine.
-6. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
-7. **Broader tax coverage.**
-8. **Alerting** on the metrics the dashboard now shows — nothing shouts when a tool breaks.
+2. **Non-blocking long turns.** A minutes-long turn should not hold a connection.
+3. **General scenario engine.** Change several facts at once and re-run every relevant engine.
+4. **Autonomous re-research.** Decide that evidence is thin or stale and go again.
+5. **Broader tax coverage.**
+6. **Alerting** on the metrics the dashboard now shows — nothing shouts when a tool breaks.
+
+An answer cache is deliberately NOT on this list: it was built, measured and removed. See ROADMAP_TO_100.md for the bar it would have to clear to come back.
 
 ## Known limits
 

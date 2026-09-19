@@ -69,6 +69,19 @@ def _legal_basis(operation: str, params: Dict[str, Any]) -> list:
     from ..knowledge import get_library
 
     ty = params.get("tax_year")
+
+    # Operations that do not compute slab tax cite their own rules. The library already carried
+    # these; nothing selected them, so a capital-gains or advance-tax answer came back with no
+    # legal basis at all — which the direct-answer path then refused to serve, correctly.
+    if operation == "capital_gains_tax":
+        asset = str(params.get("asset_type") or "").lower()
+        ids = ["cii", "cg-reinvestment"]
+        ids[:0] = (["ltcg-equity", "stcg-equity"] if "equity" in asset or "share" in asset
+                   else ["ltcg-other"])
+        return _cite(ids, ty)
+    if operation == "advance_tax_plan":
+        return _cite(["advance-tax", "interest-234"], ty)
+
     ids = ["new-regime-slabs", "rebate", "surcharge-cess"]
     if operation == "compare_regimes" or params.get("regime") == "old":
         ids.insert(1, "old-regime-slabs")
@@ -86,6 +99,12 @@ def _legal_basis(operation: str, params: Dict[str, Any]) -> list:
         ids.append("ltcg-equity")
     if params.get("ltcg_other"):
         ids.append("ltcg-other")
+    return _cite(ids, ty)
+
+
+def _cite(ids: list, ty: Any) -> list:
+    from ..knowledge import get_library
+
     lib = get_library()
     out = []
     for rid in ids:
@@ -174,7 +193,14 @@ class TaxCalcTool(BaseTool):
         if problem:
             raise FinanceInputError(problem)
         if operation in EXTRA_TAX_OPERATIONS:
-            return EXTRA_TAX_OPERATIONS[operation](**_extra_aliases(operation, params))
+            # These returned before the legal basis was attached, so a capital-gains or
+            # advance-tax answer carried no citation at all — the rules were in the library and
+            # nothing reached for them.
+            extra = EXTRA_TAX_OPERATIONS[operation](**_extra_aliases(operation, params))
+            basis = _legal_basis(operation, params)
+            if basis and isinstance(extra, dict):
+                extra.setdefault("legal_basis", basis)
+            return extra
         params = normalise_tax_params(params)
         clean = dict(params)
         if operation == "compare_regimes":

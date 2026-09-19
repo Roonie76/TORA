@@ -3867,7 +3867,8 @@
           }
         }
       ],
-      "locked_slots": false
+      "locked_slots": false,
+      "direct_answer": false
     },
     {
       "id": "slots-tax-rescaled-figure",
@@ -5569,14 +5570,16 @@
     {
       "id": "rules-tax-basis",
       "category": "rules",
-      "description": "Tax results carry their legal basis",
+      "description": "Tax results carry their legal basis, in the answer itself",
       "turns": [
         {
           "user": "How much tax on a 12.75 lakh salary this year?",
           "expect": {
             "fast_path": true,
-            "system_contains": [
-              "Legal basis:",
+            "direct_answer": true,
+            "check_answer_offline": true,
+            "answer_contains": [
+              "Legal basis",
               "Section 156"
             ]
           }
@@ -5652,8 +5655,11 @@
             "tool_output": {
               "tax_calc.tax_with_cess": 437173.8
             },
-            "system_contains": [
-              "with indexation"
+            "direct_answer": true,
+            "check_answer_offline": true,
+            "answer_contains": [
+              "with indexation",
+              "4,37,174"
             ]
           }
         }
@@ -5662,7 +5668,7 @@
     {
       "id": "tax-advance",
       "category": "tax",
-      "description": "Advance tax behind schedule",
+      "description": "Advance tax behind schedule: the answer says what to pay, when, and by how much you are behind",
       "turns": [
         {
           "user": "My tax this year will be about 1.5 lakh, TDS 40k, I've paid 10k advance tax. What do I pay and when?",
@@ -5693,8 +5699,12 @@
               "tax_calc.pay_by_next_due_date": 72500,
               "tax_calc.next_due_date": "2026-12-15"
             },
-            "system_contains": [
-              "schedule"
+            "direct_answer": true,
+            "check_answer_offline": true,
+            "answer_contains": [
+              "72,500",
+              "2026-12-15",
+              "behind"
             ]
           }
         }

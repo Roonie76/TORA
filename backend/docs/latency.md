@@ -171,3 +171,21 @@ Retry-After; 346 malformed and hostile payloads with zero server errors. Peak RS
 
 What is still slow is what should be: a question that asks what to *do*. The figures for it are
 on screen in seconds; the judgement takes minutes, and only different hardware changes that.
+
+## Tier 0 for tax
+
+Tax was held out of tier 0 because an answer must cite the rule it rests on and the engine
+summary does not carry that. It does not have to: `tax_calc` already returns those citations from
+the reviewed rules library, and the direct answer now renders them.
+
+Live: **"How much tax on a 13.75 lakh salary?" went from 185 s to 0.04 s with no model call**,
+carrying the tax year, the regime, the figure and four citations including the rebate section.
+
+The guarantee is enforced rather than tested: a `tax_calc` result with no `legal_basis` does not
+take this path at all, and goes to the model, where the prompt's citation rules apply. Writing
+that guard immediately caught a gap it was designed to catch — `capital_gains_tax` and
+`advance_tax_plan` return through a different branch that never attached a legal basis, so those
+answers had been citing nothing since they were written. The rules were in the library; nothing
+reached for them.
+
+Choosing between regimes still goes to the model. That is a recommendation, not a figure.

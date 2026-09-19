@@ -350,14 +350,13 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
               "The full plan, with what each item is worth, is in `backend/docs/ROADMAP_TO_100.md`.", "",
               "1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand. Never completed.",
               "   A first pass on 19 Sep found three defects; `backend/docs/latency.md` has the results.",
-              "2. **Tier 0 for tax.** An unambiguous tax question still needs the model, because the answer "
-              "must carry its legal basis and the engine summary does not (eval `rules-tax-basis`).",
-              "3. **Answer cache.** The same question against unchanged facts has the same answer.",
-              "4. **Non-blocking long turns.** A minutes-long turn should not hold a connection.",
-              "5. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
-              "6. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
-              "7. **Broader tax coverage.**",
-              "8. **Alerting** on the metrics the dashboard now shows — nothing shouts when a tool breaks.", ""]
+              "2. **Non-blocking long turns.** A minutes-long turn should not hold a connection.",
+              "3. **General scenario engine.** Change several facts at once and re-run every relevant engine.",
+              "4. **Autonomous re-research.** Decide that evidence is thin or stale and go again.",
+              "5. **Broader tax coverage.**",
+              "6. **Alerting** on the metrics the dashboard now shows — nothing shouts when a tool breaks.", "",
+              "An answer cache is deliberately NOT on this list: it was built, measured and removed. "
+              "See ROADMAP_TO_100.md for the bar it would have to clear to come back.", ""]
 
     lines += ["## Known limits", ""]
     lines += table(["limit", "detail"], [[a, b] for a, b in KNOWN_LIMITS]) + [""]

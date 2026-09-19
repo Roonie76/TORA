@@ -65,9 +65,9 @@ class TestWhatMustFallThroughToTheModel:
     def test_a_question_wanting_judgement_is_left_to_the_model(self, message):
         assert answer_for(message, EMI) is None
 
-    def test_tax_answers_keep_the_model_because_they_must_cite_the_law(self):
-        # eval rules-tax-basis: "Tax results carry their legal basis" (Section 156). The engine
-        # summary does not carry it, so a fast tax answer would be a worse one.
+    def test_a_tax_result_with_no_legal_basis_is_left_to_the_model(self):
+        # eval rules-tax-basis: "Tax results carry their legal basis". A tax answer without the
+        # rule it rests on is half an answer, so the engine does not get to give one.
         assert answer_for("Tax on a 13.75 lakh salary?", {"operation": "compute_tax",
                                                           "summary": "Tax is ₹1,00,000."},
                           tool="tax_calc") is None
@@ -162,3 +162,53 @@ class TestNoModelCallSlipsThrough:
             message="How much do I need to invest monthly to reach 5 lakh in 3 years at 12%?"))
         assert r.model == "engine"
         assert llm.calls == [], f"expected no model call, got {len(llm.calls)}"
+
+
+class TestTaxJoinsTierZero:
+    """Tax was held back because an answer must cite the rule it rests on and the engine summary
+    does not carry that. tax_calc already returns those citations from the reviewed rules
+    library, so the direct answer renders them and the model is no longer needed for a plain
+    tax question."""
+
+    @staticmethod
+    def tax(operation="compute_tax", **params):
+        import asyncio
+
+        from backend.tools.tax_tool import TaxCalcTool
+        return asyncio.run(TaxCalcTool().run(args={"operation": operation, "params": params})).data
+
+    def test_a_plain_tax_question_is_answered_outright(self):
+        out = answer_for("How much tax on a 13.75 lakh salary?", self.tax(gross_salary=1375000),
+                         tool="tax_calc")
+        assert out is not None
+        assert "₹78,000" in out
+        assert "Tax year 2026-27" in out          # never silently answers for an unnamed year
+
+    def test_the_legal_basis_is_in_the_answer(self):
+        out = answer_for("Tax on 13.75 lakh?", self.tax(gross_salary=1375000), tool="tax_calc")
+        assert "**Legal basis**" in out
+        assert "Section 156" in out               # eval rules-tax-basis, now asserted on the answer
+
+    def test_choosing_a_regime_is_still_the_models_job(self):
+        assert answer_for("Which tax regime is better for me?",
+                          self.tax("compare_regimes", gross_salary=1375000), tool="tax_calc") is None
+
+    def test_a_capital_gains_answer_keeps_the_method_it_used(self):
+        out = answer_for(
+            "I bought a flat in June 2010 for 30 lakh and sold it in August 2026 for 90 lakh. What is my tax?",
+            self.tax("capital_gains_tax", asset_type="property", purchase_date="2010-06-01",
+                     sale_date="2026-08-01", purchase_cost=3000000, sale_value=9000000),
+            tool="tax_calc")
+        assert out is not None
+        assert "with indexation" in out and "4,37,174" in out
+        assert "| **12.5% without indexation** |" in out    # the two methods compared as a table
+
+    def test_advance_tax_says_what_to_pay_when_and_how_far_behind(self):
+        out = answer_for("My tax this year will be about 1.5 lakh, TDS 40k, I've paid 10k advance tax. "
+                         "What do I pay and when?",
+                         self.tax("advance_tax_plan", estimated_tax=150000, tds_expected=40000,
+                                  paid_so_far=10000, tax_year="2026-27", today="2026-09-17"),
+                         tool="tax_calc")
+        assert out is not None
+        for needed in ("72,500", "2026-12-15", "behind"):
+            assert needed in out, f"missing {needed!r}"

@@ -110,7 +110,7 @@ def _slug(text: Any) -> str:
 # Values that describe a row rather than name it.
 _NOT_A_ROW_NAME = ("detail", "details", "note", "notes", "status", "summary", "description",
                    "message", "advice", "action", "warning", "explanation")
-ROW_NAME_KEYS = ("name", "item", "option", "label", "bucket", "area", "category", "key")
+ROW_NAME_KEYS = ("name", "item", "option", "label", "bucket", "area", "category", "method", "key")
 
 
 def _row_label(row: Dict[str, Any]) -> Optional[str]:
