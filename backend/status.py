@@ -349,6 +349,7 @@ def render(data: Dict[str, Any], tests: Optional[int], fe_tests: Optional[int]) 
     lines += ["## Open — in priority order", "",
               "The full plan, with what each item is worth, is in `backend/docs/ROADMAP_TO_100.md`.", "",
               "1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand. Never completed.",
+              "   A first pass on 19 Sep found three defects; `backend/docs/latency.md` has the results.",
               "2. **Tier 0 for tax.** An unambiguous tax question still needs the model, because the answer "
               "must carry its legal basis and the engine summary does not (eval `rules-tax-basis`).",
               "3. **Answer cache.** The same question against unchanged facts has the same answer.",

@@ -155,6 +155,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 The full plan, with what each item is worth, is in `backend/docs/ROADMAP_TO_100.md`.
 
 1. **Full browser runbook pass.** 149 tests, desktop and mobile, by hand. Never completed.
+   A first pass on 19 Sep found three defects; `backend/docs/latency.md` has the results.
 2. **Tier 0 for tax.** An unambiguous tax question still needs the model, because the answer must carry its legal basis and the engine summary does not (eval `rules-tax-basis`).
 3. **Answer cache.** The same question against unchanged facts has the same answer.
 4. **Non-blocking long turns.** A minutes-long turn should not hold a connection.

@@ -1,0 +1,27 @@
+{
+  "name": "tora-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "TORA's chat UI for Spendsy. Components, not an app: install them into a Spendsy checkout with `npm run install-into-spendsy`.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "install-into-spendsy": "node scripts/install-into-spendsy.mjs"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitejs/plugin-react": "^5.1.4",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.26.2",
+    "jsdom": "^28.1.0",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "tailwind-merge": "^3.4.0",
+    "vitest": "^4.0.18"
+  }
+}

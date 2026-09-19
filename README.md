@@ -40,8 +40,8 @@ evals                                  scenario benchmark (offline in CI, live a
 | `backend/tools/` | Tool registry/executor and tools |
 | `backend/research/` | Multi-source research, verification and synthesis |
 | `backend/prompts/` | TORA and planner prompts |
-| `backend/docs/` | Phase plans, completion reports and audits |
-| `frontend/src/pages/TORAPage.jsx` | Spendsy chat UI for TORA |
+| `backend/docs/` | Status (generated from the code), roadmap, latency notes, test plans |
+| `frontend/` | TORA's chat UI — components that install into Spendsy, see below |
 
 ## Run
 
@@ -87,11 +87,41 @@ Chat responses also include `grounding: {action, checked, unsupported}`.
 In the Spendsy frontend, Vite proxies `/api/chat`, `/api/models`, `/api/health` and `/api/conversations`
 to port 8000.
 
+
+## Frontend — install the chat UI into Spendsy
+
+TORA's chat UI is **not an app**. It is three files that live inside the Spendsy frontend, and
+nothing copies them there for you. Pulling this repo and starting Spendsy leaves you looking at
+the old chat screen, because the new files never reached the app.
+
+```bash
+cd frontend
+npm install --legacy-peer-deps
+npm test                                          # 33 tests, no Spendsy checkout needed
+
+npm run install-into-spendsy -- D:\Projects\Spendsy        # or ../Spendsy
+npm run install-into-spendsy -- ../Spendsy --check          # report only, copies nothing
+```
+
+It backs up anything it replaces, does nothing when the files already match, refuses a folder
+that is not a Spendsy checkout, and warns if that checkout is missing what the components import
+(`@shared/utils/cn` and Spendsy's `src/api`). **Restart the Vite dev server afterwards** — it does
+not always notice files swapped underneath it — and hard-reload the browser.
+
+| file | goes to |
+|---|---|
+| `frontend/src/pages/TORAPage.jsx` | `<spendsy>/frontend/src/pages/TORAPage.jsx` |
+| `frontend/src/pages/tora/sse.js` | `<spendsy>/frontend/src/pages/tora/sse.js` |
+| `frontend/src/pages/tora/markdown.jsx` | `<spendsy>/frontend/src/pages/tora/markdown.jsx` |
+
+`frontend/src/api.js` and `frontend/src/tests/stubs/` are stand-ins so the tests can run in this
+repo. They are never copied — those modules belong to Spendsy.
+
 ## Status
 
-See `backend/docs/` (`tora_reaudit_2026_09.md`, `phase_3a_3b_completion.md`, `phase_4_completion.md`).
-Next: live benchmark runs for model selection, authenticated access to Spendsy account data,
-streaming responses, Hindi/Hinglish understanding and compliance hardening.
+`backend/docs/TORA_STATUS.md` is generated from the code by `python -m backend.status`, so it
+cannot drift; CI fails if it does. `backend/docs/ROADMAP_TO_100.md` is what is left and in what
+order, and `backend/docs/latency.md` records what is slow and why, with measurements.
 
 ## License
 
