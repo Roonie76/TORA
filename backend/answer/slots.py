@@ -93,17 +93,40 @@ def _walk(node: Any, prefix: str, out: Dict[str, str], depth: int = 0) -> None:
         for idx, item in enumerate(node[:6]):
             label = None
             if isinstance(item, dict):
-                # Engines name a row differently depending on what it is: budget_plan uses
-                # "bucket", others "name"/"item"/"option". Missing one numbers the rows 1,2,3
-                # and the slot loses what it was about.
-                label = (item.get("name") or item.get("item") or item.get("option")
-                         or item.get("label") or item.get("bucket") or item.get("category"))
+                # Engines name a row with whatever word fits: "name", "item", "option",
+                # "bucket" (budget_plan), "area" (financial_health_check). Missing one numbers
+                # the rows 1, 2, 3 and the figure loses what it was about — live, that produced
+                # "Score: 55 / Score: 20 / Score: 15" with nothing saying which area each was.
+                # So: the known names first, then the row's own first short string.
+                label = _row_label(item)
             name = f"{prefix}.{_slug(label)}" if label else f"{prefix}.{idx + 1}"
             _walk(item, name, out, depth + 1)
 
 
 def _slug(text: Any) -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(text).lower()).strip("_")[:34] or "item"
+
+
+# Values that describe a row rather than name it.
+_NOT_A_ROW_NAME = ("detail", "details", "note", "notes", "status", "summary", "description",
+                   "message", "advice", "action", "warning", "explanation")
+ROW_NAME_KEYS = ("name", "item", "option", "label", "bucket", "area", "category", "key")
+
+
+def _row_label(row: Dict[str, Any]) -> Optional[str]:
+    """What this row is called. Falls back to its first short string so a new engine that picks
+    yet another word still produces named figures instead of 1, 2, 3."""
+    for key in ROW_NAME_KEYS:
+        value = row.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    for key, value in row.items():
+        if key in _NOT_A_ROW_NAME or not isinstance(value, str):
+            continue
+        text = value.strip()
+        if text and len(text) <= 30 and not text.endswith("."):
+            return text
+    return None
 
 
 def build_slots(tool_context: Any) -> Dict[str, str]:

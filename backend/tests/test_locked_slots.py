@@ -1,5 +1,6 @@
 """Locked slots: the engine owns every figure in the answer."""
 import os
+import re
 
 import pytest
 
@@ -169,3 +170,50 @@ class TestUnitDuplication:
     def test_different_units_are_not_merged(self):
         out, _ = render("{{a}} years away.", {"a": "9 months"})
         assert out == "9 months years away."
+
+
+class TestRowNaming:
+    """Engines name a row with whatever word fits — "name", "item", "bucket" (budget_plan),
+    "area" (financial_health_check). Missing one numbers the rows 1, 2, 3 and the figure loses
+    what it was about: live, that produced "Score: 55 / Score: 20 / Score: 15"."""
+
+    def test_the_known_names_are_used(self):
+        from backend.answer.slots import _row_label
+        for key in ("name", "item", "option", "label", "bucket", "area", "category"):
+            assert _row_label({key: "needs", "score": 1}) == "needs"
+
+    def test_an_unknown_key_falls_back_to_the_first_short_string(self):
+        from backend.answer.slots import _row_label
+        assert _row_label({"pillar": "liquidity", "score": 3}) == "liquidity"
+
+    def test_a_sentence_is_not_a_row_name(self):
+        from backend.answer.slots import _row_label
+        row = {"detail": "0.0 months of expenses saved (target 3).", "score": 0}
+        assert _row_label(row) is None
+
+    def test_a_row_with_no_string_at_all_has_no_name(self):
+        from backend.answer.slots import _row_label
+        assert _row_label({"score": 3, "target": 10}) is None
+
+    def test_health_check_areas_are_named_in_the_slots(self):
+        from backend.answer.slots import build_slots
+        from backend.finance import advisor
+
+        class Result:
+            is_error = False
+            tool_name = "finance_calc"
+
+            def __init__(self, output):
+                self.output = output
+
+        class Context:
+            def __init__(self, r):
+                self.results = r
+
+            def is_empty(self):
+                return not self.results
+
+        out = advisor.financial_health_check(monthly_income=95000, monthly_expenses=24000,
+                                             monthly_emis=13000)
+        names = list(build_slots(Context([Result(out)])))
+        assert not any(re.search(r"\.\d+\.", n) for n in names), f"numbered rows remain: {names}"
