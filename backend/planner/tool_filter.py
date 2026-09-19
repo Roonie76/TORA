@@ -87,11 +87,19 @@ def candidate_tools(message: str, intent: Any = None, available: Optional[Set[st
         if rx.search(text):
             chosen.add(name)
             chosen.update(_COMPANIONS.get(name, ()))
+    # The intent fills in when the wording gave nothing away. It does not overrule the wording:
+    # a capital-gains question is intent "calculation", and adding finance_calc on that alone put
+    # its 930-token schema — the largest of the eight — in front of the planner on a question
+    # that is plainly about tax. At 39 tokens/sec of prefill that is ~24 seconds for a tool the
+    # planner was never going to pick.
+    engines_named = chosen & {"finance_calc", "tax_calc", "spendsy_data", "rules_lookup"}
     name = getattr(getattr(intent, "intent", intent), "value", None) or ""
     if name in ("research", "comparison", "research_followup"):
         chosen.update(("research", "web_search", "web_fetch"))
     if name in ("calculation", "what_if", "planning"):
-        chosen.update(("calculator", "finance_calc"))
+        chosen.add("calculator")
+        if not engines_named:
+            chosen.add("finance_calc")
     if available is not None:
         chosen &= set(available)
     return chosen

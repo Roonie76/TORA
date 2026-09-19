@@ -189,3 +189,22 @@ answers had been citing nothing since they were written. The rules were in the l
 reached for them.
 
 Choosing between regimes still goes to the model. That is a recommendation, not a figure.
+
+### The planner's own prompt
+
+A question the fast path does not recognise still reaches the planner, and the planner's cost is
+the schemas it is shown. `candidate_tools` narrowed that by wording, but the *intent* then added
+finance_calc back on top for anything classified "calculation" — including a capital-gains
+question, which is plainly about tax. That put the largest schema of the eight (930 tokens, ~24 s
+of prefill) in front of the planner for a tool it was never going to pick.
+
+The intent now fills in only when the wording named no engine at all. A tax question sends 1,039
+tokens of schema instead of 1,969; a loan question still gets finance_calc; a question naming both
+still gets both.
+
+**Not done, deliberately:** parsing capital-gains and advance-tax questions in the fast path so
+they skip the planner entirely. Both need several amounts pulled out of prose and assigned to
+distinct roles — purchase against sale, TDS against advance tax already paid — and a swap there
+produces a confidently wrong tax figure with a legal citation attached to it. That is the exact
+failure this project keeps working to avoid, and it is worth more than the seconds it would save.
+The existing design already sends complex tax to the planner on purpose; this keeps to that.
