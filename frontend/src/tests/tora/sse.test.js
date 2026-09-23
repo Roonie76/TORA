@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ChatHttpError, createSSEParser, streamChat } from "../../pages/tora/sse";
+import { ChatHttpError, createSSEParser, runBackgroundChat, streamChat } from "../../pages/tora/sse";
 
 const collect = (chunks) => {
   const events = [];
@@ -109,5 +109,169 @@ describe("streamChat", () => {
     const final = await streamChat({ body: {}, fetchImpl, onEvent: (e) => events.push(e) });
     expect(final.response).toBe("plain");
     expect(events[0].event).toBe("final");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runBackgroundChat: the turn outlives the connection that is watching it.
+// ---------------------------------------------------------------------------
+
+const jsonResponse = (body, status = 200) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  headers: { get: () => "application/json" },
+  json: async () => body,
+});
+
+// A fetch stand-in that routes by URL+method and records every call.
+const router = ({ accept, events = [], polls = [] }) => {
+  const calls = [];
+  const eventQueue = [...events];
+  const pollQueue = [...polls];
+  const impl = async (url, opts = {}) => {
+    const method = opts.method || "GET";
+    calls.push({ url, method });
+    if (url === "/api/chat/async") return jsonResponse(accept);
+    if (url.endsWith("/events")) {
+      const next = eventQueue.shift();
+      return next === undefined ? streamResponse([]) : streamResponse(next);
+    }
+    if (method === "DELETE") return jsonResponse({ stopped: true });
+    const next = pollQueue.shift();
+    return jsonResponse(next ?? { status: "running" });
+  };
+  impl.calls = calls;
+  return impl;
+};
+
+const ACCEPTED = {
+  turn_id: "t1",
+  status: "running",
+  poll: "/api/chat/turns/t1",
+  events: "/api/chat/turns/t1/events",
+};
+
+describe("runBackgroundChat", () => {
+  it("accepts the turn, follows it, and resolves with the final answer", async () => {
+    const fetchImpl = router({
+      accept: ACCEPTED,
+      events: [[
+        'event: snapshot\ndata: {"status":"running","text":""}\n\n',
+        'event: token\ndata: {"text":"Rs 43,391"}\n\n',
+        'event: final\ndata: {"response":"Rs 43,391 a month.","model":"gemma4:e4b"}\n\n',
+      ]],
+    });
+    const seen = [];
+    const final = await runBackgroundChat({
+      body: { message: "EMI?" },
+      fetchImpl,
+      onEvent: (e) => seen.push(e.event),
+      sleep: async () => {},
+    });
+    expect(final.response).toBe("Rs 43,391 a month.");
+    expect(seen[0]).toBe("snapshot");
+  });
+
+  it("re-attaches when the stream drops and still returns the answer", async () => {
+    // The first attach dies mid-answer; the second replays a snapshot and finishes.
+    const fetchImpl = router({
+      accept: ACCEPTED,
+      events: [
+        ['event: token\ndata: {"text":"partial"}\n\n'],
+        [
+          'event: snapshot\ndata: {"status":"running","text":"partial"}\n\n',
+          'event: final\ndata: {"response":"the whole answer","model":"m"}\n\n',
+        ],
+      ],
+      polls: [{ status: "running" }],
+    });
+    const final = await runBackgroundChat({
+      body: { message: "advice?" },
+      fetchImpl,
+      sleep: async () => {},
+    });
+    expect(final.response).toBe("the whole answer");
+    expect(fetchImpl.calls.filter((c) => c.url.endsWith("/events")).length).toBe(2);
+  });
+
+  it("takes the answer from a poll when the turn finished while disconnected", async () => {
+    const fetchImpl = router({
+      accept: ACCEPTED,
+      events: [[]], // stream ends with no verdict at all
+      polls: [{ status: "done", result: { response: "finished without me", model: "m" } }],
+    });
+    const final = await runBackgroundChat({ body: {}, fetchImpl, sleep: async () => {} });
+    expect(final.response).toBe("finished without me");
+  });
+
+  it("cancels the turn on the server when aborted mid-answer, rather than just looking away", async () => {
+    // Stop has to stop the work. If it only closed the stream, the model would
+    // keep decoding for minutes on a box with two cores.
+    let releaseReader;
+    const gate = new Promise((resolve) => {
+      releaseReader = resolve;
+    });
+    const calls = [];
+    const fetchImpl = async (url, opts = {}) => {
+      const method = opts.method || "GET";
+      calls.push({ url, method });
+      if (url === "/api/chat/async") return jsonResponse(ACCEPTED);
+      if (method === "DELETE") return jsonResponse({ stopped: true });
+      if (url.endsWith("/events")) {
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => "text/event-stream" },
+          body: {
+            getReader: () => ({
+              // Never yields: the turn is still being written when we abort.
+              read: async () => {
+                await gate;
+                return { done: true };
+              },
+              releaseLock: () => {},
+            }),
+          },
+        };
+      }
+      return jsonResponse({ status: "cancelled" });
+    };
+
+    const controller = new AbortController();
+    const promise = runBackgroundChat({
+      body: {},
+      fetchImpl,
+      signal: controller.signal,
+      sleep: async () => {},
+    });
+    // Let the start POST and the attach happen, then stop mid-answer.
+    await Promise.resolve();
+    await Promise.resolve();
+    controller.abort();
+    releaseReader();
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    expect(calls.some((c) => c.method === "DELETE")).toBe(true);
+  });
+
+  it("surfaces an in-stream error as a ChatHttpError", async () => {
+    const fetchImpl = router({
+      accept: ACCEPTED,
+      events: [['event: error\ndata: {"status":503,"detail":"TORA is warming up."}\n\n']],
+    });
+    await expect(
+      runBackgroundChat({ body: {}, fetchImpl, sleep: async () => {} }),
+    ).rejects.toMatchObject({ name: "ChatHttpError", status: 503, message: "TORA is warming up." });
+  });
+
+  it("gives up after enough failed re-attaches, and says the turn may still be running", async () => {
+    const fetchImpl = router({ accept: ACCEPTED, events: [], polls: [] });
+    await expect(
+      runBackgroundChat({ body: {}, fetchImpl, maxReattaches: 1, sleep: async () => {} }),
+    ).rejects.toThrow(/may still be running/);
+  });
+
+  it("reports a rejected start without pretending a turn exists", async () => {
+    const fetchImpl = async () => jsonResponse({ detail: "Too many requests." }, 429);
+    await expect(runBackgroundChat({ body: {}, fetchImpl })).rejects.toMatchObject({ status: 429 });
   });
 });

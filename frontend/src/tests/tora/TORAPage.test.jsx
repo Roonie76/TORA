@@ -55,6 +55,7 @@ function controllableStream(signal) {
 
 let streams;
 let fetchMock;
+let turnSeq;
 
 const flush = async () => {
   await act(async () => {
@@ -62,7 +63,7 @@ const flush = async () => {
   });
 };
 
-const bodies = () => fetchMock.mock.calls.filter(([u]) => u === "/api/chat/stream").map(([, init]) => JSON.parse(init.body));
+const bodies = () => fetchMock.mock.calls.filter(([u]) => u === "/api/chat/async").map(([, init]) => JSON.parse(init.body));
 
 beforeAll(() => {
   window.matchMedia = (query) => ({
@@ -79,7 +80,30 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.clear();
   streams = [];
-  fetchMock = vi.fn(async (url, init) => {
+  turnSeq = 0;
+  // The page runs turns in the background: POST /api/chat/async to accept one,
+  // then follow /api/chat/turns/{id}/events. `streams` still indexes the event
+  // streams in the order they were opened.
+  fetchMock = vi.fn(async (url, init = {}) => {
+    if (url === "/api/chat/async") {
+      turnSeq += 1;
+      const id = `t${turnSeq}`;
+      return {
+        ok: true,
+        status: 202,
+        json: async () => ({
+          turn_id: id,
+          status: "running",
+          poll: `/api/chat/turns/${id}`,
+          events: `/api/chat/turns/${id}/events`,
+        }),
+      };
+    }
+    if (typeof url === "string" && url.endsWith("/events")) {
+      const s = controllableStream(init.signal);
+      streams.push(s);
+      return s.response;
+    }
     if (url === "/api/chat/stream") {
       const s = controllableStream(init.signal);
       streams.push(s);
@@ -224,15 +248,19 @@ describe("TORAPage streaming chat", () => {
     expect(screen.getByRole("button", { name: /Try again/ })).toBeInTheDocument();
   });
 
-  it("falls back to /api/chat when the streaming route is missing", async () => {
+  it("falls back through streaming to /api/chat against an older server", async () => {
+    // A server that predates background turns, and then one that predates
+    // streaming too: the answer still arrives rather than the chat breaking.
     fetchMock.mockImplementation(async (url) => {
-      if (url === "/api/chat/stream") return { ok: false, status: 404, json: async () => ({ detail: "Not Found" }) };
+      if (url === "/api/chat/async" || url === "/api/chat/stream") {
+        return { ok: false, status: 404, json: async () => ({ detail: "Not Found" }) };
+      }
       return { ok: true, status: 200, json: async () => ({ response: "Plain answer", conversation_id: "c9", turn: 1 }) };
     });
     render(<TORAPage />);
     await send("hi");
     await waitFor(() => expect(screen.getByText("Plain answer")).toBeInTheDocument());
-    expect(fetchMock.mock.calls.map(([u]) => u)).toEqual(["/api/chat/stream", "/api/chat"]);
+    expect(fetchMock.mock.calls.map(([u]) => u)).toEqual(["/api/chat/async", "/api/chat/stream", "/api/chat"]);
   });
 
   it("sends starter prompts and respects Shift+Enter", async () => {

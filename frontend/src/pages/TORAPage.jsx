@@ -28,7 +28,7 @@ import {
 import { cn } from "@shared/utils/cn";
 import { getStoredAccessToken } from "../api";
 import { Markdown } from "./tora/markdown";
-import { ChatHttpError, readErrorDetail, streamChat } from "./tora/sse";
+import { ChatHttpError, readErrorDetail, runBackgroundChat, streamChat } from "./tora/sse";
 
 let msgId = 0;
 const nextId = (prefix = "msg") => {
@@ -752,7 +752,19 @@ export default function TORAPage({ user, theme = "dark", showToast }) {
   );
 
   const applyEvent = useCallback(
-    (id, { event, data }) => {
+    function apply(id, { event, data }) {
+      if (event === "snapshot") {
+        // A background turn opens with everything that happened before we
+        // attached — which is also what we get after a dropped connection, so
+        // this rebuilds the message rather than appending to a stale one.
+        if (flushFrame.current) cancelAnimationFrame(flushFrame.current);
+        flushFrame.current = null;
+        pendingTokens.current = "";
+        patchMessage(id, { steps: [], tools: [], content: "" });
+        (data.events || []).forEach((e) => apply(id, { event: e.type, data: e }));
+        patchMessage(id, { content: data.text || "" });
+        return;
+      }
       if (event === "token") {
         pendingTokens.current += data.text || "";
         if (!flushFrame.current) flushFrame.current = requestAnimationFrame(() => flushTokens(id));
@@ -848,19 +860,25 @@ export default function TORAPage({ user, theme = "dark", showToast }) {
 
     const attempt = async (id) => {
       const body = id ? { conversation_id: id, message: trimmed } : { message: trimmed };
+      const follow = { body, headers: toraHeaders(), signal: controller.signal,
+                       onEvent: (evt) => applyEvent(assistantId, evt) };
+      const missingRoute = (err) =>
+        err instanceof ChatHttpError &&
+        (err.status === 404 || err.status === 405) &&
+        !String(err.message).match(/conversation/i);
       try {
-        return await streamChat({
-          body,
-          headers: toraHeaders(),
-          signal: controller.signal,
-          onEvent: (evt) => applyEvent(assistantId, evt),
-        });
+        // Background turn: the answer survives this connection dropping, which
+        // on CPU matters — a long reply outlives a phone going to sleep.
+        return await runBackgroundChat(follow);
       } catch (err) {
-        // Older server without the streaming route: fall back to a single reply.
-        if (err instanceof ChatHttpError && (err.status === 404 || err.status === 405) && !String(err.message).match(/conversation/i)) {
-          return postPlain(body, controller.signal);
+        if (!missingRoute(err)) throw err;
+        try {
+          // Server predates /api/chat/async: hold the connection instead.
+          return await streamChat(follow);
+        } catch (streamErr) {
+          if (missingRoute(streamErr)) return postPlain(body, controller.signal);
+          throw streamErr;
         }
-        throw err;
       }
     };
 
