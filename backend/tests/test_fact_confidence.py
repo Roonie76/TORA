@@ -156,3 +156,71 @@ class TestItChangesNothingItShouldNot:
         profile = FinancialProfile(rent=fact(source="model_assisted"))
         data = profile.to_dict()
         assert data["rent"]["confidence"]["band"] == "medium"
+
+
+# ---------------------------------------------------------------------------
+# Confidence reaching the answer — rendered in code, not asked of the model.
+# ---------------------------------------------------------------------------
+
+from backend.answer.temporal import temporal_recall  # noqa: E402
+
+
+def profile_with(source="user", days_old=250, status=FactStatus.CURRENT.value):
+    """
+    250 days old by default, so March 2026 falls *inside* the window the fact has
+    been on file. A fact recorded yesterday genuinely was not on file in March,
+    and would correctly take the "I can't evidence that date" branch instead.
+    """
+    return FinancialProfile(rent=FinancialFact(
+        name="rent", value=18000, source=source, status=status,
+        updated_at=(NOW - timedelta(days=days_old)).isoformat(),
+    ))
+
+
+class TestTheAnswerSaysHowSureItIs:
+    def test_a_model_inferred_figure_is_flagged_in_the_sentence(self):
+        said = temporal_recall("what was my rent in March", profile_with(source="model_assisted"), now=NOW)
+        assert "₹18,000" in said
+        assert "Inferred from what you wrote" in said
+
+    def test_a_clean_fact_carries_no_caveat(self):
+        """
+        A caveat on every answer is a caveat on none. Only say it when it is
+        actually true of this figure.
+        """
+        said = temporal_recall("what was my rent in March", profile_with(source="user"), now=NOW)
+        assert said == "In March 2026 your rent was ₹18,000."
+
+    def test_a_hedged_fact_is_flagged(self):
+        said = temporal_recall("what was my rent in March",
+                               profile_with(status=FactStatus.ESTIMATE.value), now=NOW)
+        assert "estimate" in said.lower()
+
+    def test_age_is_never_the_caveat_on_a_question_about_the_past(self):
+        """
+        Confidence counts a year-old fact as weaker because it may have changed.
+        But this question *is* about the past, so "you told me this a year ago"
+        is not a caveat — it is the point. Saying it here would train the reader
+        to skip the caveats that do matter.
+        """
+        said = temporal_recall("what was my rent in March",
+                               profile_with(source="user", days_old=400), now=NOW)
+        assert "month" not in said.lower().replace("march", "")
+        assert said == "In March 2026 your rent was ₹18,000."
+
+    def test_the_caveat_survives_the_could_not_evidence_that_date_answer(self):
+        said = temporal_recall("what was my rent in January",
+                               profile_with(source="model_assisted", days_old=30), now=NOW)
+        assert "don't have anything recorded" in said
+        assert "Inferred" in said
+
+    def test_a_broken_fact_object_does_not_take_the_answer_down(self):
+        """The caveat is a nicety; the figure is the answer. Never lose the figure."""
+        class Odd(FinancialFact):
+            def confidence(self, now=None):
+                raise RuntimeError("boom")
+
+        profile = FinancialProfile(rent=Odd(name="rent", value=18000,
+                                            updated_at=(NOW - timedelta(days=250)).isoformat()))
+        said = temporal_recall("what was my rent in March", profile, now=NOW)
+        assert "₹18,000" in said

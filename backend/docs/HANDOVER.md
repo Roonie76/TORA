@@ -138,21 +138,38 @@ neither).
    highest-value thing left and it does not need me — it needs eyes. A first
    partial pass found three defects, two of which no test could see.
 
-2. **Broader tax coverage** — more heads of income, more years, presumptive
-   schemes (44AD / 44ADA). **I deliberately stopped short of this, and the reason
-   matters more than the gap.** Every tax answer carries a legal basis, which
-   means a wrong threshold ships as a wrong figure *with a citation attached* —
-   the most damaging failure this system can produce, because the citation is
-   what makes it believable. Indian presumptive limits and slab thresholds have
-   moved repeatedly, and I could not verify the current ones against a primary
-   source from here. Writing them from memory would have been the exact mistake
-   the whole locked-slots design exists to prevent.
+2. **More tax coverage.** Presumptive taxation (44AD / 44ADA) is done, and the
+   way it was done is the template for the rest — **read this before adding any
+   tax rule.**
 
-   So the route in is the rules library, not the engine: add each rule to
-   `backend/knowledge/rules.json` with its citation and review date, verify it
-   against the source, let `python -m backend.knowledge check` own its staleness,
-   and only then add the operation that reads it. Slower, and the only honest
-   order.
+   I first refused this work, on the grounds that I could not verify Indian
+   thresholds against a primary source. That was wrong: incometaxindia.gov.in is
+   reachable, and I had not tried. Worth recording, because the failure mode was
+   not recklessness but the opposite — declining real work on an assumption I had
+   not tested.
+
+   The care was still warranted. Two official pages disagreed on 44ADA: one
+   carried the pre-2024 text with no proviso at all. A tax answer ships its legal
+   basis, so a wrong threshold becomes a wrong figure *with a citation attached*,
+   and the citation is what makes it believable.
+
+   So the order is fixed, and it is rules-library-first:
+
+   1. verify the figure against the Act on incometaxindia.gov.in, and
+      cross-check a second page — they do disagree;
+   2. add it to `backend/knowledge/rules.json` with `source_url`, `verified_on`
+      and a citation that names the amending Act ("proviso inserted by Finance
+      Act 2023, w.e.f. 1-4-2024"), so the reader can date it;
+   3. only then write the operation, and have it **read the figures out of the
+      rule** rather than restating them. A threshold with two homes will
+      eventually differ in two homes, and the one nobody updates is the one that
+      answers. `test_presumptive_tax.py` changes a library figure and asserts the
+      answer follows; keep that pattern.
+
+   Scope a rule to the tax years you actually verified. The Income-tax Act, 2025
+   renumbers these provisions from 2026-27 and only secondary sources describe
+   the new numbering, so the presumptive rules carry no citation for that year.
+   A guessed section number is worse than none, because it reads as authority.
 
 3. **Use confidence in answers.** The score exists and `/api/me/memory` shows it,
    but nothing caveats a reply built on a low-confidence fact. That means a

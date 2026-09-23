@@ -104,6 +104,32 @@ def _format(value: Any, fact: Any) -> str:
         return str(value)
 
 
+def _how_sure(fact: Any) -> str:
+    """
+    A caveat on where a remembered figure came from, or "" when there is none.
+
+    Rendered here in code rather than asked of the model, for the reason the
+    whole answer path exists: a prompt rule to "mention when you are unsure" is
+    advisory, and the turns where it would matter most are exactly the turns a
+    small model drops it.
+
+    Age is deliberately excluded. Confidence counts a year-old fact as weaker
+    because it may have changed since — but the question here is *about the
+    past*, so "you told me this a year ago" is not a caveat, it is the point.
+    Repeating it would train the reader to ignore the caveats that do matter.
+    """
+    if fact is None:
+        return ""
+    try:
+        confidence = fact.confidence()
+    except Exception:
+        return ""
+    reasons = [r for r in confidence.reasons if "confirmed" not in r]
+    if not reasons:
+        return ""
+    return f" ({reasons[0].capitalize()}.)"
+
+
 def temporal_recall(message: str, profile: Any, now: Optional[datetime] = None) -> Optional[str]:
     """
     Answer a point-in-time question from memory, or return None to let the
@@ -139,14 +165,16 @@ def temporal_recall(message: str, profile: Any, now: Optional[datetime] = None) 
             return f"I don't have your {noun} on file, so I can't say what it was in {label}."
         return None
 
-    shown = _format(answer.value, profile.get_fact(name))
+    fact = profile.get_fact(name)
+    shown = _format(answer.value, fact)
+    caveat = _how_sure(fact)
 
     if answer.exact:
-        return f"In {label} your {noun} was {shown}."
+        return f"In {label} your {noun} was {shown}.{caveat}"
 
     # We hold the value but cannot evidence it for that date. Say which is which,
     # rather than presenting the newest figure as a memory of that month.
     return (
         f"I don't have anything recorded for your {noun} as far back as {label}. "
-        f"The earliest I have is {shown}."
+        f"The earliest I have is {shown}.{caveat}"
     )
