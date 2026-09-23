@@ -47,6 +47,7 @@ from .documents import DocumentError, MAX_BYTES as MAX_DOCUMENT_BYTES, parse_doc
 from .observability import TelemetryHub, conversation_ref, start_trace
 from .observability import training_log
 from .observability import progress
+from .observability import alerts as alerting
 from . import turns
 from .agent.suggestions import suggest
 
@@ -724,6 +725,23 @@ async def metrics():
     if failing:
         data["failing_tools"] = failing
     return data
+
+
+@app.get("/api/alerts")
+async def alerts():
+    """
+    What is wrong with TORA right now, worst first.
+
+    Level-triggered from the current metrics, so it always reflects the present
+    state rather than a latched history. New and cleared faults are logged at
+    WARNING/ERROR as they change, so this endpoint is for looking; the log is
+    what shouts.
+    """
+    data = dict(telemetry.snapshot())
+    failing = tool_executor.breaker.snapshot()
+    if failing:
+        data["failing_tools"] = failing
+    return alerting.check(data)
 
 
 @app.get("/api/dashboard", response_class=HTMLResponse)

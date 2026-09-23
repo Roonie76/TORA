@@ -9,12 +9,12 @@ Generated from the code on 2026-09-23 by `python -m backend.status`. Everything 
 | Tools registered | 8 |
 | Finance engine operations | 24 |
 | Tax operations | 8 |
-| HTTP endpoints | 25 |
+| HTTP endpoints | 26 |
 | Intents | 12 |
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1346 |
+| Backend tests | 1368 |
 | Frontend tests | 40 |
 
 ## Built
@@ -59,6 +59,7 @@ Backed by a rules library of 33 verified rules (`python -m backend.knowledge che
 | DELETE | `/api/chat/turns/{turn_id}` | Stop a running turn |
 | GET | `/api/chat/turns/{turn_id}/events` | Live progress for a background turn, as SSE. |
 | GET | `/api/metrics` | Aggregate, content-free TORA metrics since process start. |
+| GET | `/api/alerts` | What is wrong with TORA right now, worst first. |
 | GET | `/api/dashboard` | A single page over the metrics and traces that already exist. |
 | GET | `/api/traces` | Recent per-turn traces (metadata only) |
 | GET | `/api/me` | Who TORA thinks is calling, and whether account features are on. |
@@ -129,7 +130,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1346 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1368 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
@@ -137,7 +138,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Configuration
 
-`TORA_ANSWER_BLOCK`, `TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_BLOCK_ANSWER_TOKENS`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_DIRECT_ANSWER`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_PROMPT_SLICING`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TOOL_BREAKER_FAILURES`, `TORA_TOOL_BREAKER_SECONDS`, `TORA_TOOL_RETRIES`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`, `TORA_TURN_MAX_ANSWER_CHARS`, `TORA_TURN_MAX_EVENTS`, `TORA_TURN_MAX_RETAINED`, `TORA_TURN_TTL_SECONDS`
+`TORA_ALERT_GROUNDING_MIN_TURNS`, `TORA_ALERT_GROUNDING_RATE`, `TORA_ALERT_REQUEST_ERROR_RATE`, `TORA_ALERT_REQUEST_MIN_TOTAL`, `TORA_ALERT_TOOL_ERROR_RATE`, `TORA_ALERT_TOOL_MIN_CALLS`, `TORA_ANSWER_BLOCK`, `TORA_AUTH_CACHE_SECONDS`, `TORA_AUTH_MODE`, `TORA_AUTH_URL`, `TORA_BLOCK_ANSWER_TOKENS`, `TORA_COMPLEX_MODEL`, `TORA_COMPLEX_THINK`, `TORA_CORS_ORIGINS`, `TORA_DEBUG_ENDPOINTS`, `TORA_DIRECT_ANSWER`, `TORA_FAST_PATH`, `TORA_FINANCE_URL`, `TORA_GROUNDING_MODE`, `TORA_HOST`, `TORA_LLM_EXTRACTION`, `TORA_LLM_NUM_CTX`, `TORA_LLM_THINK`, `TORA_LLM_TIMEOUT_SECONDS`, `TORA_LOCKED_SLOTS`, `TORA_MAX_ANSWER_TOKENS`, `TORA_MODEL_CACHE_SECONDS`, `TORA_PLANNER_REPAIRS`, `TORA_PROMPT_SLICING`, `TORA_RATE_LIMIT_PER_MINUTE`, `TORA_SESSION_DB`, `TORA_TOOL_BREAKER_FAILURES`, `TORA_TOOL_BREAKER_SECONDS`, `TORA_TOOL_RETRIES`, `TORA_TRACE_FILE`, `TORA_TRAINING_LOG`, `TORA_TURN_MAX_ANSWER_CHARS`, `TORA_TURN_MAX_EVENTS`, `TORA_TURN_MAX_RETAINED`, `TORA_TURN_TTL_SECONDS`
 
 ## Partial — built, with a named gap
 
