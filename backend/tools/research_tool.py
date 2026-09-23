@@ -10,11 +10,13 @@ The output is a compact dict that ContextBuilder renders as a
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Type
 
 from pydantic import BaseModel, Field, field_validator
 
 from .base import BaseTool, ToolMetadata
+from ..research import reattempt
 
 logger = logging.getLogger("tora.tools.research")
 
@@ -95,14 +97,48 @@ class ResearchTool(BaseTool):
     def provider(self) -> Any:
         return self._provider
 
-    async def execute(self, query: str, max_sources: int = DEFAULT_RESEARCH_SOURCES, **kwargs: Any) -> Dict[str, Any]:
-        logger.info("ResearchTool running multi-source research (sources=%d, query_len=%d)", max_sources, len(query))
+    async def _run_once(self, query: str, max_sources: int) -> Dict[str, Any]:
         synthesis = await self._provider.multi_source_research(
             query=query,
             max_sources=max_sources,
             max_chars_per_source=RESEARCH_CHARS_PER_SOURCE,
         )
-        data = synthesis.to_dict()
+        return self._shape(synthesis.to_dict(), query)
+
+    async def execute(self, query: str, max_sources: int = DEFAULT_RESEARCH_SOURCES, **kwargs: Any) -> Dict[str, Any]:
+        logger.info("ResearchTool running multi-source research (sources=%d, query_len=%d)", max_sources, len(query))
+        result = await self._run_once(query, max_sources)
+
+        # Autonomous re-research: if the evidence is thin, ask a *different*
+        # question rather than answering from one weak source. Budgeted hard --
+        # each attempt is several seconds of real network on two cores.
+        attempts = 1
+        reasons: List[str] = []
+        improved = False
+        year = datetime.now(timezone.utc).year
+        for _ in range(max(0, reattempt.MAX_REATTEMPTS)):
+            verdict = reattempt.assess(result, query, year=year)
+            if verdict.sufficient or not verdict.retry_query:
+                reasons = reasons or verdict.reasons
+                break
+            reasons = verdict.reasons
+            logger.info("Re-researching: %s", "; ".join(verdict.reasons))
+            attempts += 1
+            candidate = await self._run_once(verdict.retry_query, max_sources)
+            if reattempt.is_better(candidate, result):
+                result, improved = candidate, True
+            else:
+                # The reformulation drifted or came back no stronger. Keeping it
+                # would be a regression that reads as an improvement.
+                break
+
+        result["attempts"] = attempts
+        if attempts > 1:
+            result["reattempt_reasons"] = reasons
+            result["reattempt_note"] = reattempt.note(reasons, attempts, improved)
+        return result
+
+    def _shape(self, data: Dict[str, Any], query: str) -> Dict[str, Any]:
 
         conclusions: List[Dict[str, Any]] = [
             _compact_conclusion(c) for c in data.get("conclusions", [])[:MAX_RENDERED_CONCLUSIONS]
