@@ -39,9 +39,17 @@ def check_ip_safety(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> None
     plus IPv6 forms that embed an IPv4 address (IPv4-mapped, 6to4, Teredo, NAT64).
     """
     if isinstance(ip, ipaddress.IPv6Address):
-        embedded = []
+        # An IPv4-mapped address (::ffff:a.b.c.d) IS its embedded IPv4 address: the
+        # kernel connects to the IPv4 host. Validate the inner address and stop there.
+        # The outer IPv6 wrapper's own flags are not a property of the destination and
+        # are not stable across Python versions -- ::ffff:0:0/96 was classified as
+        # `is_reserved` before 3.11.10 / 3.12.6 and is not after, so checking the
+        # wrapper would reject every public IPv4 host on an older interpreter.
         if ip.ipv4_mapped is not None:
-            embedded.append(ip.ipv4_mapped)
+            check_ip_safety(ip.ipv4_mapped)
+            return
+
+        embedded = []
         if ip.sixtofour is not None:
             embedded.append(ip.sixtofour)
         if ip.teredo is not None:

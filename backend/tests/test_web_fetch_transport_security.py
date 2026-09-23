@@ -29,6 +29,7 @@ from backend.tools.web_fetch.provider.safe_transport import (
         "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254",
         "100.64.0.1", "100.127.255.254", "0.0.0.0", "224.0.0.1", "240.0.0.1",
         "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:169.254.169.254",
+        "::ffff:10.1.2.3", "::ffff:192.168.1.1", "::ffff:100.64.0.1", "::ffff:0.0.0.0",
         "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "198.18.0.1",
     ],
 )
@@ -37,9 +38,35 @@ def test_non_public_addresses_rejected(addr):
         check_ip_safety(ipaddress.ip_address(addr))
 
 
-@pytest.mark.parametrize("addr", ["93.184.216.34", "8.8.8.8", "2606:4700:4700::1111", "::ffff:8.8.8.8"])
+@pytest.mark.parametrize(
+    "addr",
+    [
+        "93.184.216.34", "8.8.8.8", "2606:4700:4700::1111",
+        "::ffff:8.8.8.8", "::ffff:93.184.216.34",
+    ],
+)
 def test_public_addresses_allowed(addr):
     check_ip_safety(ipaddress.ip_address(addr))
+
+
+def test_ipv4_mapped_verdict_does_not_depend_on_interpreter_version():
+    """
+    An IPv4-mapped address is judged by the IPv4 host it points at, never by the
+    flags of the ::ffff:0:0/96 wrapper.
+
+    CPython classified that wrapper as `is_reserved` before 3.11.10 / 3.12.6 and
+    does not after. Reading the wrapper's flags therefore made the guard reject
+    every public IPv4 destination on an older interpreter -- a fetch that works on
+    one machine and fails on another. This pins the verdict to the embedded address
+    so both interpreters agree.
+    """
+    mapped = ipaddress.ip_address("::ffff:8.8.8.8")
+    assert mapped.ipv4_mapped == ipaddress.ip_address("8.8.8.8")
+    check_ip_safety(mapped)  # allowed on every supported Python
+
+    blocked = ipaddress.ip_address("::ffff:127.0.0.1")
+    with pytest.raises(FetchSSRFError):
+        check_ip_safety(blocked)  # the embedded IPv4 is still fully checked
 
 
 def test_provider_uses_shared_ip_policy():
