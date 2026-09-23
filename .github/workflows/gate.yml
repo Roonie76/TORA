@@ -23,7 +23,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        # 3.10 is the oldest interpreter TORA is run on in practice (it is what
+        # ships in the dev VM). Keep it in the matrix: an SSRF-guard bug that
+        # only appeared below 3.11.10 reached a developer machine because CI
+        # tested 3.11/3.12 only.
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
