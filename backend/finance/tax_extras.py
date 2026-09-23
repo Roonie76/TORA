@@ -465,3 +465,129 @@ def _register() -> None:
 
 
 _register()
+
+
+# ── presumptive taxation (sections 44AD / 44ADA) ─────────────────────────────
+
+PRESUMPTIVE_RULE_IDS = {
+    "business": "presumptive-44ad-business",
+    "profession": "presumptive-44ada-profession",
+}
+
+
+def _presumptive_figures(kind: str) -> Dict[str, Any]:
+    """
+    The thresholds, read from the reviewed rules library rather than written here.
+
+    Hardcoding them would give two places for a limit to live, and the one nobody
+    updates is the one that answers. The library already owns the citation, the
+    source URL and the staleness check, so the engine reads the same row the
+    answer cites — they cannot drift apart.
+    """
+    from ..knowledge import get_library
+
+    rule = get_library().get(PRESUMPTIVE_RULE_IDS[kind])
+    if rule is None or not rule.figures:
+        raise FinanceInputError(f"No reviewed rule found for presumptive {kind} income.")
+    return dict(rule.figures)
+
+
+def presumptive_income(receipts: float, kind: str = "profession", cash_receipts: float = 0.0,
+                       digital_receipts: Optional[float] = None,
+                       tax_year: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Whether a small business or professional may declare income presumptively,
+    and what that income would be.
+
+    Answers the eligibility question first, because it is the one that decides
+    everything after it: above the limit the scheme simply does not apply, and a
+    deemed profit computed anyway would be a confident number for a scheme the
+    person cannot use.
+    """
+    kind = str(kind or "profession").strip().lower()
+    if kind in ("professional", "profession", "44ada"):
+        kind = "profession"
+    elif kind in ("business", "trade", "44ad"):
+        kind = "business"
+    else:
+        raise FinanceInputError("'kind' must be either 'business' or 'profession'.")
+
+    total = _pos("receipts", receipts)
+    cash = _pos("cash_receipts", cash_receipts, allow_zero=True)
+    if cash > total:
+        raise FinanceInputError("'cash_receipts' cannot exceed total receipts.")
+
+    f = _presumptive_figures(kind)
+    threshold_pct = float(f["low_cash_threshold_percent"])
+    cash_share = (cash / total * 100.0) if total else 0.0
+    low_cash = cash_share <= threshold_pct
+
+    if kind == "business":
+        base_limit = float(f["turnover_limit"])
+        high_limit = float(f["turnover_limit_low_cash"])
+        label, section = "turnover", "44AD"
+    else:
+        base_limit = float(f["gross_receipts_limit"])
+        high_limit = float(f["gross_receipts_limit_low_cash"])
+        label, section = "gross receipts", "44ADA"
+
+    limit = high_limit if low_cash else base_limit
+    eligible = total <= limit
+
+    # For a business the rate depends on how the money arrived; for a profession
+    # it is a flat 50%.
+    if kind == "business":
+        digital = total - cash if digital_receipts is None else _pos("digital_receipts", digital_receipts, allow_zero=True)
+        digital = min(max(digital, 0.0), total)
+        cash_part = total - digital
+        pct_digital = float(f["deemed_profit_percent_digital"])
+        pct_cash = float(f["deemed_profit_percent"])
+        deemed = digital * pct_digital / 100.0 + cash_part * pct_cash / 100.0
+        rate_note = (f"{pct_digital:g}% on {inr(digital)} received digitally and "
+                     f"{pct_cash:g}% on {inr(cash_part)} received in cash")
+        effective_pct = round(deemed / total * 100.0, 2) if total else 0.0
+    else:
+        pct = float(f["deemed_profit_percent"])
+        deemed = total * pct / 100.0
+        rate_note = f"{pct:g}% of gross receipts"
+        effective_pct = pct
+
+    if eligible:
+        summary = (f"You can declare income under section {section}: {rate_note}, "
+                   f"so {inr(deemed)} would be your taxable business income. "
+                   f"No books of account and no audit.")
+    else:
+        summary = (f"Section {section} does not apply — your {label} of {inr(total)} is above the "
+                   f"{inr(limit)} limit" +
+                   (f" (the higher limit applies because cash is {cash_share:.1f}% of receipts)."
+                    if low_cash else
+                    f". Keeping cash receipts at or below {threshold_pct:g}% would raise the limit to "
+                    f"{inr(high_limit)}."))
+
+    return {
+        "operation": "presumptive_income",
+        "kind": kind,
+        "section": section,
+        "inputs": {"receipts": total, "cash_receipts": cash, "tax_year": tax_year},
+        "eligible": eligible,
+        "limit_applied": limit,
+        "base_limit": base_limit,
+        "low_cash_limit": high_limit,
+        "cash_share_percent": round(cash_share, 2),
+        "low_cash_condition_met": low_cash,
+        "deemed_income": round(deemed, 2) if eligible else None,
+        "deemed_income_formatted": inr(deemed) if eligible else None,
+        "effective_rate_percent": effective_pct if eligible else None,
+        "summary": summary,
+        "assumptions": [
+            "Presumptive income is the whole taxable business income; no further expense deduction is allowed.",
+            "Eligibility also depends on who you are: section 44AD is not available to a non-resident, an LLP, "
+            "an agency business, or income by way of commission or brokerage.",
+        ],
+    }
+
+
+EXTRA_TAX_OPERATIONS["presumptive_income"] = presumptive_income
+EXTRA_TAX_PARAMS["presumptive_income"] = (
+    "receipts, [kind: business|profession], [cash_receipts], [digital_receipts], [tax_year]"
+)

@@ -8,13 +8,13 @@ Generated from the code on 2026-09-23 by `python -m backend.status`. Everything 
 |---|---|
 | Tools registered | 8 |
 | Finance engine operations | 24 |
-| Tax operations | 8 |
+| Tax operations | 9 |
 | HTTP endpoints | 26 |
 | Intents | 12 |
 | Remembered fact types | 35 |
-| Verified rules | 33 (checked 2026-09-17) |
+| Verified rules | 35 (checked 2026-09-23) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1416 |
+| Backend tests | 1440 |
 | Frontend tests | 40 |
 
 ## Built
@@ -40,9 +40,9 @@ Deterministic operations on `finance_calc` — the model never does this arithme
 
 ### Tax engine
 
-`compute_tax` · `compare_regimes` · `hra_exemption` · `house_property_income` · `capital_gains_tax` · `advance_tax_plan` · `itr_form_choice` · `tax_saving_finder`
+`compute_tax` · `compare_regimes` · `hra_exemption` · `house_property_income` · `capital_gains_tax` · `advance_tax_plan` · `itr_form_choice` · `tax_saving_finder` · `presumptive_income`
 
-Backed by a rules library of 33 verified rules (`python -m backend.knowledge check` reports staleness and drift).
+Backed by a rules library of 35 verified rules (`python -m backend.knowledge check` reports staleness and drift).
 
 ### API
 
@@ -130,7 +130,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1416 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1440 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.

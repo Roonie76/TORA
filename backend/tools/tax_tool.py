@@ -81,6 +81,12 @@ def _legal_basis(operation: str, params: Dict[str, Any]) -> list:
         return _cite(ids, ty)
     if operation == "advance_tax_plan":
         return _cite(["advance-tax", "interest-234"], ty)
+    if operation == "presumptive_income":
+        # The engine reads its thresholds from these same rules, so the figure
+        # and the citation cannot come from different places.
+        kind = str(params.get("kind") or "profession").lower()
+        rule = "presumptive-44ad-business" if kind.startswith("bus") else "presumptive-44ada-profession"
+        return _cite([rule], ty)
 
     ids = ["new-regime-slabs", "rebate", "surcharge-cess"]
     if operation == "compare_regimes" or params.get("regime") == "old":
@@ -142,7 +148,8 @@ def _extra_aliases(operation: str, params: Dict[str, Any]) -> Dict[str, Any]:
 
 class TaxCalcInput(BaseModel):
     operation: Literal["compute_tax", "compare_regimes", "hra_exemption", "house_property_income",
-                       "capital_gains_tax", "advance_tax_plan", "itr_form_choice", "tax_saving_finder"] = Field(
+                       "capital_gains_tax", "advance_tax_plan", "itr_form_choice", "tax_saving_finder",
+                       "presumptive_income"] = Field(
         ..., description="compute_tax for one regime, compare_regimes for new vs old, or a specialised calculation."
     )
     params: Dict[str, Any] = Field(default_factory=dict, description="Annual amounts in rupees.")
