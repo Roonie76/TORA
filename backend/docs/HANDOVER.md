@@ -137,14 +137,34 @@ neither).
 1. **The 149-test manual browser pass.** Desktop and mobile, by hand. This is the
    highest-value thing left and it does not need me — it needs eyes. A first
    partial pass found three defects, two of which no test could see.
-2. **Per-fact confidence.** The temporal work landed; confidence per fact did not.
-   Source (user-stated / document / model-extracted / inferred), corroboration
-   count, and age are all already on the fact.
-3. **Alerting** on what `/api/dashboard` already shows. Nothing shouts when a tool
-   breaks; someone has to look.
-4. **Autonomous re-research** — notice evidence is thin or stale and go again.
-5. **Broader tax coverage** — more heads of income, more years, presumptive
-   schemes.
+
+2. **Broader tax coverage** — more heads of income, more years, presumptive
+   schemes (44AD / 44ADA). **I deliberately stopped short of this, and the reason
+   matters more than the gap.** Every tax answer carries a legal basis, which
+   means a wrong threshold ships as a wrong figure *with a citation attached* —
+   the most damaging failure this system can produce, because the citation is
+   what makes it believable. Indian presumptive limits and slab thresholds have
+   moved repeatedly, and I could not verify the current ones against a primary
+   source from here. Writing them from memory would have been the exact mistake
+   the whole locked-slots design exists to prevent.
+
+   So the route in is the rules library, not the engine: add each rule to
+   `backend/knowledge/rules.json` with its citation and review date, verify it
+   against the source, let `python -m backend.knowledge check` own its staleness,
+   and only then add the operation that reads it. Slower, and the only honest
+   order.
+
+3. **Use confidence in answers.** The score exists and `/api/me/memory` shows it,
+   but nothing caveats a reply built on a low-confidence fact. That means a
+   prompt change, so it has to be measured against the 160 scenarios rather than
+   assumed — see §1 on why prompt rules are advisory.
+
+4. **Corroboration counting.** Confidence deliberately ignores how often a value
+   has been repeated, because restating a figure leaves no trace today. Adding
+   one means touching the write path, which is why it was left alone.
+
+5. **Alert delivery.** Detection, severity and log lines exist; shipping them to
+   a webhook or pager is a deployment decision that was left open on purpose.
 
 Deliberately *not* on this list: teaching the fast path to parse capital-gains and
 advance-tax questions. Both need several amounts pulled out of prose and assigned
@@ -153,6 +173,8 @@ swapping a pair produces a confidently wrong tax figure with a legal citation
 attached. That is the exact failure this project keeps working against, and it
 costs more than the seconds it would save. Complex tax routes to the planner on
 purpose.
+
+Also not on it: rebuilding the answer cache. See §2.
 
 ## 8. If something looks wrong
 
