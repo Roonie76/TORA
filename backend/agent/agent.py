@@ -16,6 +16,7 @@ from ..planner.models import ToolPlan
 from ..planner.planner import Planner
 from ..answer import blocks as answer_blocks
 from ..answer import direct as answer_direct
+from ..answer import temporal as answer_temporal
 from ..answer import slots as answer_slots
 from ..planner.fast_path import Complexity, assess_complexity, document_plan, fast_plan, profile_plan
 from ..planner.tool_filter import needs_no_tools
@@ -432,6 +433,28 @@ class ToraAgent:
 
         if not skip_planner and _is_small_talk(message, intent):
             skip_planner = True
+
+        # Tier 0 for the past: "what was my rent in March?" is already in the
+        # revision chains, so it is answered from memory with no planner and no
+        # model -- the same trade as every other Tier 0 path.
+        if _direct_answer_enabled() and isinstance(active_profile, FinancialProfile):
+            remembered = answer_temporal.temporal_recall(message, active_profile)
+            if remembered:
+                logger.info("Answered a point-in-time question from memory; no model call.")
+                if trace is not None:
+                    trace.direct_answer = True
+                progress.emit("stage", stage="remembering")
+                progress.emit("stage", stage="writing")
+                await progress.emit_token(remembered)
+                return AgentResponse(
+                    content=remembered,
+                    model="engine",
+                    done=True,
+                    financial_profile=active_profile,
+                    intent=intent,
+                    grounding={"checked": 0, "ok": True, "action": "none",
+                               "source": "memory", "unsupported": []},
+                )
 
         # A turn that only reads back or records what TORA already knows needs no engine, and a
         # planner call costs ~95s of prompt reading on CPU. 19 of 35 live planner calls returned

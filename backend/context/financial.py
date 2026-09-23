@@ -72,6 +72,53 @@ class FactRevision:
         return str(self.value)
 
 
+def _as_datetime(value: Union[str, datetime, None]) -> Optional[datetime]:
+    """
+    Parse a stored timestamp into an aware UTC datetime.
+
+    Timestamps written before this module set tzinfo are naive; treating them as
+    UTC keeps comparisons total rather than raising halfway through a timeline.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+    return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+
+
+@dataclass
+class FactAtTime:
+    """The answer to "what was this at time T", including whether it is really known."""
+    known: bool
+    value: Any = None
+    status: Optional[str] = None
+    effective_from: Optional[str] = None
+    effective_to: Optional[str] = None
+    exact: bool = True
+    reason: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "known": self.known,
+            "value": self.value,
+            "status": self.status,
+            "effective_from": self.effective_from,
+            "effective_to": self.effective_to,
+            "exact": self.exact,
+            "reason": self.reason,
+        }
+
+
 @dataclass
 class FinancialFact:
     """
@@ -136,6 +183,93 @@ class FinancialFact:
         if not chain or chain[-1] != self.value:
             chain.append(self.value)
         return chain
+
+    def timeline(self) -> List[Dict[str, Any]]:
+        """
+        Every value this fact has truly held, oldest first, with the window each
+        one was on file.
+
+        Two things this deliberately does not pretend to know:
+
+        * These timestamps record when TORA *learned* something, not when it
+          became true in the world. A rent that changed in March and was
+          mentioned in June is recorded in June. So this answers "what did you
+          have on file for my rent in March", which is the only question the
+          data can honestly support.
+        * Retracted values are excluded. The user said they were never true, so
+          they never occupied a window -- answering a question about March with
+          a figure the user has already corrected would be worse than saying
+          nothing. The value they replaced stands for that period instead.
+
+        `from` is None on the oldest entry: the fact existed before the first
+        revision was recorded, but nothing says for how long.
+        """
+        valid = self._valid_revisions()
+        entries: List[Dict[str, Any]] = []
+        for i, rev in enumerate(valid):
+            entries.append({
+                "value": rev.value,
+                "status": rev.status,
+                "source": rev.source,
+                "from": valid[i - 1].timestamp if i else None,
+                "to": rev.timestamp,
+            })
+        entries.append({
+            "value": self.value,
+            "status": self.status,
+            "source": self.source,
+            "from": valid[-1].timestamp if valid else self.updated_at,
+            "to": None,
+        })
+        return entries
+
+    def value_as_of(self, when: Union[str, datetime]) -> "FactAtTime":
+        """What this fact's value was on file at `when` (see timeline())."""
+        moment = _as_datetime(when)
+        if moment is None:
+            return FactAtTime(known=False, reason="unreadable_time")
+
+        entries = self.timeline()
+        # The first moment this fact is evidenced: when its oldest value was
+        # superseded, or -- if it has only ever held one value -- when that value
+        # was recorded.
+        earliest = _as_datetime(entries[0]["to"] if len(entries) > 1 else entries[0]["from"])
+
+        first_start = _as_datetime(entries[0]["from"])
+        if first_start is not None and moment < first_start:
+            # Asked about a time before the oldest window opens. The fact is
+            # known; it just was not known *then*. Saying "I don't know your
+            # rent" here would be false -- TORA does know it, and the useful
+            # answer is the value it holds, marked as not evidenced for that
+            # date. This is also the only case a retracted-only history reaches.
+            oldest = entries[0]
+            return FactAtTime(
+                known=True,
+                value=oldest["value"],
+                status=oldest["status"],
+                effective_from=oldest["from"],
+                effective_to=oldest["to"],
+                exact=False,
+                reason="before_first_record",
+            )
+
+        for entry in entries:
+            start = _as_datetime(entry["from"])
+            end = _as_datetime(entry["to"])
+            if (start is None or start <= moment) and (end is None or moment < end):
+                before_records = earliest is not None and moment < earliest
+                return FactAtTime(
+                    known=True,
+                    value=entry["value"],
+                    status=entry["status"],
+                    effective_from=entry["from"],
+                    effective_to=entry["to"],
+                    # Asking about a time before anything was recorded: this is
+                    # the oldest value we hold, not a value we watched being true.
+                    exact=not before_records,
+                    reason="before_first_record" if before_records else None,
+                )
+        return FactAtTime(known=False, reason="no_value_at_that_time")
 
     def add_revision(
         self,
@@ -565,6 +699,20 @@ class FinancialProfile:
             if a.name == clean:
                 return a
         return None
+
+    def fact_as_of(self, name: str, when: Union[str, datetime]) -> FactAtTime:
+        """
+        What a named fact was on file as at `when`.
+
+        A fact TORA has never held and a fact it held but not yet at that time
+        are different answers, and the caller needs to tell them apart: the
+        first is "I don't know your rent", the second is "I didn't know it in
+        March, but it's ₹18,000 now". Both are honest; only one is useful.
+        """
+        fact = self.get_fact(name)
+        if fact is None:
+            return FactAtTime(known=False, reason="no_such_fact")
+        return fact.value_as_of(when)
 
     def to_context_string(self) -> str:
         """
