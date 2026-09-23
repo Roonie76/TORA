@@ -580,6 +580,24 @@ def retirement_plan(current_age: float, retirement_age: float, monthly_expenses_
                         "pension/EPF income are not modelled."],
     }
 
+def _scenario_compare(baseline: Dict[str, Any], changes: Dict[str, Any],
+                      emergency_months: float = 6.0) -> Dict[str, Any]:
+    """Move several figures at once and re-run every metric on both sides.
+
+    Imported here rather than at module top: backend.finance.scenario calls back
+    into this module for the metric functions, so a top-level import would be
+    circular.
+    """
+    from .scenario import ScenarioInputError, compare
+
+    try:
+        return compare(baseline, changes, emergency_months=emergency_months)
+    except ScenarioInputError as exc:
+        # One error type reaches the planner's repair loop, so a bad scenario is
+        # retried like any other bad parameter rather than failing the turn.
+        raise FinanceInputError(str(exc)) from exc
+
+
 OPERATIONS = {
     "emi": emi,
     "amortization": amortization,
@@ -596,6 +614,7 @@ OPERATIONS = {
     "budget_plan": budget_plan,
     "goal_plan": goal_plan,
     "retirement_plan": retirement_plan,
+    "scenario_compare": _scenario_compare,
 }
 
 OPERATION_PARAMS = {
@@ -611,6 +630,7 @@ OPERATION_PARAMS = {
     "savings_rate": "monthly_income, monthly_expenses",
     "debt_to_income": "monthly_debt_payments, monthly_income",
     "net_worth": "assets: {name: amount}, liabilities: {name: amount}",
+    "scenario_compare": "baseline: {monthly_income, monthly_expenses, rent, monthly_debt_payments, savings}, changes: {field: {set|change|pct}}, [emergency_months]",
     "budget_plan": "monthly_income, [needs: {name: amount}], [wants: {name: amount}], [emis], [current_savings_per_month]",
     "goal_plan": "goals: [{name, target, years, [current_saved]}], [annual_return], [monthly_capacity]",
     "retirement_plan": "current_age, retirement_age, monthly_expenses_today, [inflation_rate], [return_before], "

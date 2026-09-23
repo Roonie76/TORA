@@ -7,14 +7,14 @@ Generated from the code on 2026-09-23 by `python -m backend.status`. Everything 
 |  | count |
 |---|---|
 | Tools registered | 8 |
-| Finance engine operations | 23 |
+| Finance engine operations | 24 |
 | Tax operations | 8 |
 | HTTP endpoints | 25 |
 | Intents | 12 |
 | Remembered fact types | 35 |
 | Verified rules | 33 (checked 2026-09-17) |
 | Offline eval scenarios | 160 (256 turns) |
-| Backend tests | 1323 |
+| Backend tests | 1346 |
 | Frontend tests | 40 |
 
 ## Built
@@ -36,7 +36,7 @@ Generated from the code on 2026-09-23 by `python -m backend.status`. Everything 
 
 Deterministic operations on `finance_calc` — the model never does this arithmetic:
 
-`amortization` · `budget_plan` · `compound_growth` · `consolidation_check` · `debt_payoff` · `debt_rescue_plan` · `debt_snapshot` · `debt_to_income` · `emergency_fund` · `emi` · `financial_health_check` · `goal_plan` · `inflation_adjust` · `loan_tenure_choice` · `minimum_due_trap` · `net_worth` · `prepay_vs_invest` · `rent_vs_buy` · `required_sip` · `retirement_plan` · `savings_rate` · `sip_change_impact` · `sip_future_value`
+`amortization` · `budget_plan` · `compound_growth` · `consolidation_check` · `debt_payoff` · `debt_rescue_plan` · `debt_snapshot` · `debt_to_income` · `emergency_fund` · `emi` · `financial_health_check` · `goal_plan` · `inflation_adjust` · `loan_tenure_choice` · `minimum_due_trap` · `net_worth` · `prepay_vs_invest` · `rent_vs_buy` · `required_sip` · `retirement_plan` · `savings_rate` · `scenario_compare` · `sip_change_impact` · `sip_future_value`
 
 ### Tax engine
 
@@ -129,7 +129,7 @@ The chat page renders them live: working panel with per-step ticks and engine su
 
 ### Verification and testing
 
-- `python -m backend.check`: 1323 unit tests, 160 offline scenarios, the rules-library check.
+- `python -m backend.check`: 1346 unit tests, 160 offline scenarios, the rules-library check.
 - Offline scenarios by category: accounts 5, advice 5, calculation 20, debt 8, followup 9, grounding 7, language 16, memory 37, planning 5, routing 8, rules 5, safety 7, tax 19, tool_selection 9.
 - `python -m backend.stress.load_test`: throughput, per-user isolation, concurrent turns on one conversation, cancelled streams, rate limiting, fuzzing (a small version runs in the gate).
 - Live prompt suite and its results: `backend/docs/stress_test_report.md`.
