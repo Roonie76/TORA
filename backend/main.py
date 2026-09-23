@@ -47,6 +47,7 @@ from .documents import DocumentError, MAX_BYTES as MAX_DOCUMENT_BYTES, parse_doc
 from .observability import TelemetryHub, conversation_ref, start_trace
 from .observability import training_log
 from .observability import progress
+from . import turns
 from .agent.suggestions import suggest
 
 load_dotenv()
@@ -88,7 +89,14 @@ class SlidingWindowRateLimiter:
         self._hits: Dict[str, Deque[float]] = defaultdict(deque)
         self._lock = threading.Lock()
 
-    def allow(self, key: str) -> bool:
+    def allow(self, key: str, consume: bool = True) -> bool:
+        """
+        Whether `key` may make one more call, recording it unless consume=False.
+
+        The peek exists for the background-turn endpoint, which has to reject an
+        over-limit caller *before* creating a turn, while leaving the actual
+        count to _chat so one turn is never charged twice.
+        """
         if self.limit <= 0:
             return True
         now = time.monotonic()
@@ -98,7 +106,8 @@ class SlidingWindowRateLimiter:
                 hits.popleft()
             if len(hits) >= self.limit:
                 return False
-            hits.append(now)
+            if consume:
+                hits.append(now)
             return True
 
     def reset(self) -> None:
@@ -107,6 +116,9 @@ class SlidingWindowRateLimiter:
 
 
 rate_limiter = SlidingWindowRateLimiter(RATE_LIMIT_PER_MINUTE)
+# Strong references to in-flight background turns: a bare asyncio task is
+# only weakly held by the loop and can be collected mid-turn.
+_background_turns: set = set()
 telemetry = TelemetryHub(trace_file=os.getenv("TORA_TRACE_FILE") or None)
 DEBUG_ENDPOINTS = os.getenv("TORA_DEBUG_ENDPOINTS", "").strip().lower() in ("1", "true", "yes")
 
@@ -309,14 +321,165 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-async def _chat(request: ChatRequest, http_request: Request, identity: Optional[Identity] = None):
+@app.post("/api/chat/async", status_code=status.HTTP_202_ACCEPTED)
+async def chat_async(request: ChatRequest, http_request: Request):
+    """
+    Accept a turn and answer it in the background.
+
+    Returns at once with a turn id. The work continues whether or not anyone
+    stays connected, so a slow answer survives a sleeping phone, an idle proxy
+    or a closed tab -- unlike /api/chat/stream, where the turn dies with the
+    connection. Attach to `events` for live progress, or poll `poll`.
+    """
+    identity = await resolve_identity(http_request)
+    owner = _client_key(http_request, identity)
+
+    # Rate limiting is normally enforced inside _chat, but by then we would have
+    # already created a turn. Check first so a flood cannot fill the registry.
+    if not rate_limiter.allow(owner, consume=False):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please wait a moment and try again.",
+            headers={"Retry-After": str(int(rate_limiter.window))},
+        )
+
+    turn = turns.registry.create(owner_key=owner, conversation_id=request.conversation_id)
+    task = asyncio.create_task(_run_background_turn(turn, request, identity, owner))
+    turn._task = task
+    # Hold a reference: a bare create_task may be garbage collected mid-flight.
+    _background_turns.add(task)
+    task.add_done_callback(_background_turns.discard)
+
+    return {
+        "turn_id": turn.turn_id,
+        "status": turn.status,
+        "conversation_id": turn.conversation_id,
+        "poll": f"/api/chat/turns/{turn.turn_id}",
+        "events": f"/api/chat/turns/{turn.turn_id}/events",
+    }
+
+
+async def _run_background_turn(turn: "turns.Turn", request: ChatRequest,
+                               identity: Optional[Identity], owner: str) -> None:
+    """Run one accepted turn to completion, recording it into the registry."""
+    sink = progress.install(turns.TurnSink(turns.registry, turn))
+    ctx_token = set_current_identity(identity)
+    trace = start_trace(
+        mode="stateless" if (request.messages is not None and request.conversation_id is None) else "stateful",
+        conversation_ref=conversation_ref(request.conversation_id),
+    )
+    try:
+        result = await _chat(request, None, identity, client_key=owner)
+        if result.conversation_id and trace.conversation_ref is None:
+            trace.conversation_ref = conversation_ref(result.conversation_id)
+        telemetry.finish(trace, status="ok", http_status=200)
+        turn.conversation_id = result.conversation_id or turn.conversation_id
+        turns.registry.finish(turn, result.model_dump())
+    except asyncio.CancelledError:
+        telemetry.finish(trace, status="cancelled", http_status=499)
+        raise
+    except HTTPException as exc:
+        label = "rate_limited" if exc.status_code == 429 else ("client_error" if exc.status_code < 500 else "error")
+        telemetry.finish(trace, status=label, http_status=exc.status_code,
+                         error_type=None if exc.status_code < 500 else f"http_{exc.status_code}")
+        turns.registry.fail(turn, exc.status_code, str(exc.detail))
+    except Exception as exc:
+        telemetry.finish(trace, status="error", http_status=500, error_type=type(exc).__name__)
+        turns.registry.fail(turn, 500, "Something went wrong. Please try again.")
+    finally:
+        progress.uninstall(sink)
+        reset_current_identity(ctx_token)
+
+
+def _require_turn(turn_id: str, owner: str) -> "turns.Turn":
+    turn = turns.registry.get(turn_id, owner)
+    if turn is None:
+        # Same answer for "no such turn" and "not yours": knowing which is a
+        # small leak about other people's traffic.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such turn.")
+    return turn
+
+
+@app.get("/api/chat/turns/{turn_id}")
+async def get_turn(turn_id: str, http_request: Request):
+    """The current state of a background turn, including the answer so far."""
+    identity = await resolve_identity(http_request)
+    turn = _require_turn(turn_id, _client_key(http_request, identity))
+    return turn.snapshot()
+
+
+@app.delete("/api/chat/turns/{turn_id}")
+async def cancel_turn(turn_id: str, http_request: Request):
+    """Stop a running turn. Already-finished turns are left alone."""
+    identity = await resolve_identity(http_request)
+    turn = _require_turn(turn_id, _client_key(http_request, identity))
+    stopped = turns.registry.cancel(turn)
+    return {"turn_id": turn.turn_id, "status": turn.status, "stopped": stopped}
+
+
+@app.get("/api/chat/turns/{turn_id}/events")
+async def turn_events(turn_id: str, http_request: Request):
+    """
+    Live progress for a background turn, as SSE.
+
+    The first event is always a `snapshot` carrying everything that happened
+    before this client attached, so attaching late -- or re-attaching after a
+    dropped connection -- loses nothing. Detaching does not stop the turn.
+    """
+    identity = await resolve_identity(http_request)
+    turn = _require_turn(turn_id, _client_key(http_request, identity))
+    queue = turns.registry.attach(turn)
+
+    async def events():
+        try:
+            yield ": connected\n\n"
+            snapshot = {"type": "snapshot", **turn.snapshot()}
+            yield f"event: snapshot\ndata: {json.dumps(snapshot, ensure_ascii=False, default=str)}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=STREAM_KEEPALIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                if event is None:
+                    break
+                yield f"event: {event['type']}\ndata: {json.dumps(event, ensure_ascii=False, default=str)}\n\n"
+        finally:
+            turns.registry.detach(turn, queue)
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _client_key(http_request: Optional[Request], identity: Optional[Identity]) -> str:
+    """
+    Who this turn is rate-limited and owned as.
+
+    Derived once at the edge so a background turn can keep its caller's identity
+    after the HTTP request that started it is gone (see backend/turns.py).
+    """
+    if identity is not None:
+        return f"user:{identity.user_id}"
+    if http_request is not None and http_request.client:
+        return http_request.client.host
+    return "unknown"
+
+
+async def _chat(
+    request: ChatRequest,
+    http_request: Optional[Request],
+    identity: Optional[Identity] = None,
+    client_key: Optional[str] = None,
+):
     """
     Core Chat Endpoint:
     Validates request -> Builds Context -> ToraAgent -> LLMProvider -> Response
+
+    `http_request` may be None for a background turn, in which case `client_key`
+    carries what would have been read from it.
     """
-    client_key = http_request.client.host if http_request.client else "unknown"
-    if identity is not None:
-        client_key = f"user:{identity.user_id}"
+    if client_key is None:
+        client_key = _client_key(http_request, identity)
     if not rate_limiter.allow(client_key):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
