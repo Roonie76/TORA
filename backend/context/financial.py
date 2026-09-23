@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Tuple, Union
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -117,6 +117,75 @@ class FactAtTime:
             "exact": self.exact,
             "reason": self.reason,
         }
+
+
+# How much a fact's origin is worth. These are not arbitrary: they are ordered by
+# how each one has actually failed in this project.
+#
+#   document       a Form 16 or salary slip. A primary record, read by a parser,
+#                  not a sentence anyone had to interpret.
+#   user           pulled from what the user typed by the rule-based extractor.
+#                  It only fires on explicit statements, so when it fires it is
+#                  usually right.
+#   model_assisted the model decided what the sentence meant. This is the one
+#                  that has been wrong in ways that mattered -- a home-loan EMI
+#                  stored as a personal loan, an example salary stored as the
+#                  user's own. It is used because it catches what rules miss,
+#                  and it is trusted less for exactly the same reason.
+SOURCE_CONFIDENCE = {
+    "document": 0.95,
+    "user": 0.90,
+    "model_assisted": 0.60,
+}
+UNKNOWN_SOURCE_CONFIDENCE = 0.70
+
+# A fact the user hedged is worth less than one they stated.
+STATUS_MULTIPLIER = {
+    FactStatus.CURRENT.value: 1.0,
+    FactStatus.ESTIMATE.value: 0.8,
+    FactStatus.AMBIGUOUS.value: 0.6,
+    FactStatus.HYPOTHETICAL.value: 0.5,
+    FactStatus.CONDITIONAL.value: 0.7,
+    FactStatus.HISTORICAL.value: 0.6,
+    FactStatus.UNKNOWN.value: 0.4,
+    FactStatus.RETRACTED.value: 0.0,
+}
+
+# Salaries, rents and balances change. Something said a year ago is not wrong,
+# but it is not evidence about today either. No penalty inside a quarter, then a
+# straight taper to FLOOR at a year.
+AGE_FRESH_DAYS = 90.0
+AGE_STALE_DAYS = 365.0
+AGE_FLOOR = 0.7
+
+HIGH_BAND = 0.8
+MEDIUM_BAND = 0.55
+
+
+@dataclass
+class Confidence:
+    """How much weight a remembered fact can carry, and why."""
+    score: float
+    band: str
+    reasons: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"score": self.score, "band": self.band, "reasons": list(self.reasons)}
+
+
+def _age_factor(updated_at: Optional[str], now: Optional[datetime] = None) -> Tuple[float, Optional[int]]:
+    recorded = _as_datetime(updated_at)
+    if recorded is None:
+        return 1.0, None
+    days = ((now or datetime.now(timezone.utc)) - recorded).total_seconds() / 86400.0
+    if days < 0:
+        return 1.0, 0
+    if days <= AGE_FRESH_DAYS:
+        return 1.0, int(days)
+    if days >= AGE_STALE_DAYS:
+        return AGE_FLOOR, int(days)
+    span = AGE_STALE_DAYS - AGE_FRESH_DAYS
+    return 1.0 - (1.0 - AGE_FLOOR) * ((days - AGE_FRESH_DAYS) / span), int(days)
 
 
 @dataclass
@@ -313,6 +382,44 @@ class FinancialFact:
         self.source_turn = turn
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
+    def confidence(self, now: Optional[datetime] = None) -> Confidence:
+        """
+        How much this fact can be leaned on, and why — derived, never stored.
+
+        Computing it on read rather than writing a number at extraction time is
+        deliberate: a stored score would go stale the moment the fact aged, and
+        would have to be migrated every time the reasoning changed. Nothing here
+        touches the write path, so no existing memory can be corrupted by it.
+
+        Deliberately NOT included: how many times a value has been repeated.
+        Restating a figure does not currently leave a trace, so a corroboration
+        count would have to be added to the write path first — and a confidence
+        score that silently means "1" for every fact ever stored would look like
+        evidence while being none.
+        """
+        reasons: List[str] = []
+
+        base = SOURCE_CONFIDENCE.get(self.source, UNKNOWN_SOURCE_CONFIDENCE)
+        if self.source == "document":
+            reasons.append("read from a document")
+        elif self.source == "model_assisted":
+            reasons.append("inferred from what you wrote, not stated outright")
+        elif self.source not in SOURCE_CONFIDENCE:
+            reasons.append(f"source '{self.source}' is not one TORA rates")
+
+        status_factor = STATUS_MULTIPLIER.get(self.status, 0.7)
+        if status_factor < 1.0 and self.status != FactStatus.CURRENT.value:
+            reasons.append(f"recorded as {self.status}")
+
+        age_factor, days = _age_factor(self.updated_at, now=now)
+        if days is not None and age_factor < 1.0:
+            months = max(1, round(days / 30))
+            reasons.append(f"last confirmed about {months} month{'s' if months != 1 else ''} ago")
+
+        score = round(base * status_factor * age_factor, 3)
+        band = "high" if score >= HIGH_BAND else ("medium" if score >= MEDIUM_BAND else "low")
+        return Confidence(score=score, band=band, reasons=reasons)
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "name": self.name,
@@ -320,6 +427,7 @@ class FinancialFact:
             "currency": self.currency,
             "period": self.period,
             "status": self.status,
+            "confidence": self.confidence().to_dict(),
             "previous_value": self.get_previous_value(),
             "original_value": self.get_original_value(),
             "revisions": [r.to_dict() for r in self.revisions],
